@@ -1,0 +1,2078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<!-- Viewport meta — gets rewritten below to a desktop width (1240px) when
+     the page is opened from the installed PWA, so the layout matches what
+     you see on desktop ("request desktop site" by default in app mode).
+     In a regular browser tab it stays responsive (width=device-width). -->
+<meta id="viewport" name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<script>
+// Run BEFORE the page renders. If launched as the installed PWA (standalone
+// display mode), swap the viewport to a fixed desktop width so the simulator
+// renders at its full desktop layout — equivalent to Chrome's "Desktop site"
+// toggle being checked. The browser then scales the page to fit the screen;
+// the user can still pinch-to-zoom. Doesn't affect regular browser usage.
+(function(){
+  try{
+    var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+    // iOS also exposes navigator.standalone for legacy detection
+    if(!standalone && window.navigator && window.navigator.standalone) standalone = true;
+    if(standalone){
+      var vp = document.getElementById('viewport');
+      if(vp) vp.setAttribute('content','width=1240,viewport-fit=cover');
+    }
+  }catch(e){}
+})();
+</script>
+<title>DELOS Pump Simulator</title>
+<!-- PWA · installable Android/iOS home-screen app -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0a1428" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="DELOS Pump Sim" />
+<meta name="application-name" content="DELOS Pump Simulator" />
+<link rel="icon" type="image/svg+xml" href="icon.svg" />
+<link rel="apple-touch-icon" href="icon.svg" />
+<style>
+:root{--bg-0:#07101f;--bg-1:#0f1a30;--bg-2:#16223d;--ink:#e6edf7;--muted:#93a7c6;--accent:#4cc2ff;--accent-2:#6ee7b7;--warn:#f59e0b;--panel:#0f1a32;--panel-2:#16223d;--border:#1f2c4a;--border-2:#2a3a64}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:radial-gradient(1200px 700px at 50% -20%,#1a2746 0%,var(--bg-0) 60%);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;min-height:100vh;overflow-x:hidden}
+.app{max-width:1240px;margin:0 auto;padding:24px 20px 48px}
+header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.logo{width:56px;height:auto;flex-shrink:0;filter:drop-shadow(0 4px 12px rgba(76,194,255,.22))}
+h1{font-size:22px;font-weight:600;margin:0;letter-spacing:.2px}
+.subtitle{color:var(--muted);font-size:13px}
+
+.section{margin-bottom:14px}
+.section-title{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin:0 0 8px 4px;font-weight:600}
+/* Side-by-side row for two related sections (Feed & Water Demand + Sea Pumps).
+   Each child grows to fill its half but wraps to a stacked layout below 920px
+   so neither section gets squashed on smaller viewports. */
+.section-row{display:flex;flex-wrap:wrap;gap:14px;align-items:stretch;margin-bottom:14px}
+.section-row>.section{flex:1 1 420px;min-width:0;margin-bottom:0;display:flex;flex-direction:column}
+.section-row>.section>.feed-calc,.section-row>.section>.sp-panel{flex:1}
+
+/* Scene — focal point, distinct look */
+.scene-card{background:linear-gradient(180deg,#0a1428 0%,#0a1428 55%,#0d1a36 100%);border:1px solid rgba(76,194,255,.18);border-radius:16px;padding:14px;box-shadow:0 18px 50px rgba(0,0,0,.4),0 0 0 1px rgba(76,194,255,.06)}
+.scene-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;padding:4px 6px}
+.scene-status{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.scene-status .stat-tag{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);padding:3px 8px;background:rgba(76,194,255,.10);border:1px solid rgba(76,194,255,.25);border-radius:6px}
+.scene-status .stat-tag strong{color:#cde9ff}
+.scene-status .pill{font-size:12px;padding:4px 10px;border-radius:999px;background:rgba(76,194,255,.15);border:1px solid rgba(76,194,255,.35);color:#cde9ff;font-weight:600}
+.scene-status .pill.paused{background:rgba(245,158,11,.15);border-color:rgba(245,158,11,.4);color:#fde7b0}
+.scene-legend{display:flex;justify-content:center;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:11px;color:var(--muted)}
+.scene-legend .lg{display:flex;align-items:center;gap:6px}
+.scene-legend .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+canvas#scene{display:block;width:100%;height:auto;border-radius:10px;background:transparent}
+
+.controls,.config{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.controls .group,.config .group{display:flex;align-items:center;gap:8px}
+.controls label,.config label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.btn{background:#1a2745;color:var(--ink);border:1px solid var(--border-2);border-radius:8px;padding:6px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:background 150ms,border-color 150ms}
+.btn:hover{background:#22335a;border-color:#3a4a72}
+.btn.primary{background:rgba(76,194,255,.18);border-color:rgba(76,194,255,.5);color:#cde9ff}
+.btn.primary:hover{background:rgba(76,194,255,.28)}
+.btn.warn{background:rgba(245,158,11,.15);border-color:rgba(245,158,11,.4);color:#fde7b0}
+.btn.warn:hover{background:rgba(245,158,11,.22)}
+.btn.success{background:rgba(110,231,183,.18);border-color:rgba(110,231,183,.5);color:#bbf7d0}
+.btn.success:hover{background:rgba(110,231,183,.26)}
+.preset{background:var(--panel-2);color:var(--muted);border:1px solid var(--border);border-radius:6px;padding:4px 10px;font-size:11px;cursor:pointer;font-family:inherit;font-weight:500}
+.preset:hover{background:#1a2745;color:var(--ink)}
+.preset.active{background:rgba(76,194,255,.22);border-color:rgba(76,194,255,.55);color:#cde9ff}
+.controls input[type=range]{flex:1;min-width:120px;max-width:240px;accent-color:#4cc2ff}
+.controls input[type=number],.config input[type=text]{background:var(--panel-2);color:var(--ink);border:1px solid var(--border-2);border-radius:6px;padding:5px 8px;font-size:13px;font-family:inherit;font-variant-numeric:tabular-nums}
+.controls input[type=number]{width:72px}
+.config input[type=text]{width:88px}
+.controls input[type=number]:focus,.config input[type=text]:focus{outline:none;border-color:#4cc2ff}
+.speed-disp{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:#cde9ff;min-width:64px;text-align:right}
+.divider{width:1px;height:24px;background:var(--border)}
+
+.config{flex-direction:column;align-items:stretch;gap:10px}
+.config-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.config-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.cfg-tank{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.cfg-tank .name{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:6px;font-weight:600}
+.cfg-tank .inputs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.cfg-tank .inputs .x{color:var(--muted);font-size:14px}
+.cfg-tank .vol-out{margin-top:6px;font-size:14px;font-weight:600;color:#cde9ff;font-variant-numeric:tabular-nums}
+.cfg-tank .vol-out .small{font-size:11px;color:var(--muted);font-weight:500;margin-left:4px}
+.cfg-tank .time{margin-top:2px;font-size:11px;color:var(--muted)}
+.cfg-foot{font-size:11px;color:var(--muted);display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+
+/* Sea pumps — inline, NO panel box */
+/* Sea Pumps panel — matches the visual style of .config and .feed-calc:
+   shared --panel background, --border outline, rounded corners, padding. */
+.sp-panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:14px}
+.sp-toggles-wrap{display:flex;flex-direction:column;gap:6px}
+.sp-toggle-label{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:600;padding-left:2px}
+/* ─── Sea Pumps control bar ───────────────────────────────────────────────
+   Layout: [inputs ......]   = [result card pinned right]
+   • Inputs are content-sized (no dead space inside pills)
+   • Visual "=" cue separates inputs from computed result
+   • Result card pins to the right edge and contains a two-tier hierarchy:
+       PER CYCLE   27,622 m³/day  ← primary, larger, green
+       Total Flow  1,381 m³/h     ← supporting, smaller, blue
+   The result card eliminates the previous awkward auto-margin gap between
+   "Duty" and "Total Flow". */
+.sp-bar{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:stretch;margin:0}
+.sp-field{display:flex;flex-direction:column;gap:5px;min-width:0;justify-content:flex-end}
+.sp-field>label{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:600;padding-left:2px}
+.sp-field input[type=text]{padding:4px 6px;background:transparent;color:var(--ink);border:none;font-size:13px;font-variant-numeric:tabular-nums;font-family:inherit;text-align:right;width:auto}
+.sp-field input[type=text]:focus{outline:none}
+/* Input pills size to content; inputs themselves use `field-sizing:content`
+   (modern browsers) with a sensible min/max-width fallback so "20" doesn't
+   sit in a 50px well of empty space. */
+.sp-input{display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 6px;background:rgba(76,194,255,.06);border:1px solid rgba(76,194,255,.22);border-radius:8px;height:32px;box-sizing:border-box;transition:border-color .15s,background .15s}
+.sp-input:focus-within{border-color:#4cc2ff;background:rgba(76,194,255,.10)}
+.sp-input input[type=text]{width:48px;min-width:28px;max-width:64px;field-sizing:content}
+.sp-input-amber{background:rgba(245,158,11,.06);border-color:rgba(245,158,11,.28)}
+.sp-input-amber:focus-within{border-color:#fbcd86;background:rgba(245,158,11,.10)}
+.sp-unit{font-size:11px;color:var(--muted);white-space:nowrap}
+/* The "=" between inputs and result: a quiet visual cue, not a hard divider. */
+.sp-eq{align-self:flex-end;font-size:20px;color:rgba(255,255,255,.18);font-weight:300;line-height:32px;padding:0 2px;user-select:none}
+/* Result card — sits inline next to the "=" cue, compact two-tier hierarchy. */
+.sp-result{display:flex;flex-direction:column;justify-content:center;gap:3px;padding:5px 10px;background:linear-gradient(135deg,rgba(110,231,183,.11),rgba(76,194,255,.05));border:1px solid rgba(110,231,183,.30);border-radius:8px}
+.sp-result-row{display:flex;align-items:baseline;gap:6px;white-space:nowrap}
+.sp-result-label{font-size:8.5px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700;min-width:54px}
+/* PER CYCLE — the dominant result. */
+.sp-result-main{font-size:12px;color:#bbf7d0;padding-bottom:3px;border-bottom:1px solid rgba(110,231,183,.16)}
+.sp-result-main .sp-result-label{color:rgba(110,231,183,.85)}
+.sp-result-main strong{font-size:16px;color:#6ee7b7;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.3px;text-shadow:0 0 10px rgba(110,231,183,.22)}
+.sp-result-unit{font-size:10.5px;color:rgba(187,247,208,.7);font-weight:500}
+/* TOTAL FLOW — supporting row. */
+.sp-result-sub{font-size:10.5px;color:rgba(205,233,255,.78)}
+.sp-result-sub .sp-result-label{color:rgba(205,233,255,.55)}
+.sp-result-sub strong{font-size:12px;color:#4cc2ff;font-weight:700;font-variant-numeric:tabular-nums}
+.sp-result-meta{font-size:9.5px;color:var(--muted);margin-left:auto;font-weight:500}
+.toggles-row{display:flex;gap:5px;flex-wrap:wrap;margin:0}
+.toggles-row .toggle{min-width:40px;padding:4px 9px}
+.pumpcount-grp{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:rgba(76,194,255,.06);border:1px solid rgba(76,194,255,.22);border-radius:8px;height:32px;box-sizing:border-box}
+.pumpcount-grp strong{font-variant-numeric:tabular-nums;min-width:16px;text-align:center;color:#cde9ff;font-size:14px;font-weight:700}
+.ctr-btn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;background:var(--panel-2);color:#cde9ff;border:1px solid var(--border-2);border-radius:5px;font-size:14px;font-weight:600;cursor:pointer;line-height:1;font-family:inherit}
+.ctr-btn:hover:not(:disabled){background:rgba(76,194,255,.18);border-color:#4cc2ff;color:#fff}
+.ctr-btn:disabled{opacity:.35;cursor:not-allowed}
+.toggle{padding:4px 9px;border-radius:6px;background:#1a2745;color:var(--muted);border:1px solid var(--border-2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;letter-spacing:.5px;text-align:center;transition:all 150ms}
+.toggle.on{background:rgba(110,231,183,.22);border-color:rgba(110,231,183,.55);color:#bbf7d0}
+.toggle.off{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.3);color:#fbcd86}
+.toggle:hover{filter:brightness(1.15)}
+
+.timeline{margin-top:12px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 14px}
+.timeline .head{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted);margin-bottom:6px}
+.strip{position:relative;height:28px;background:var(--panel-2);border-radius:6px;overflow:hidden}
+
+.strip .win{position:absolute;top:0;bottom:0;background:linear-gradient(180deg,rgba(76,194,255,.32),rgba(76,194,255,.18));border-left:1px solid rgba(76,194,255,.6);border-right:1px solid rgba(76,194,255,.6)}
+.strip .now{position:absolute;top:-2px;bottom:-2px;width:2px;background:#6ee7b7;box-shadow:0 0 8px rgba(110,231,183,.7)}
+.strip .tick{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.07)}
+.strip .lbl{position:absolute;bottom:1px;font-size:9px;color:var(--muted);transform:translateX(-50%)}
+
+.status-bar{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px}
+.pond-card{background:var(--panel-2);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-top:8px;display:flex;align-items:center;gap:10px}
+.pond-card .badge{font-size:11px;padding:3px 9px;border-radius:6px;background:#1a2745;color:var(--muted);text-transform:uppercase;letter-spacing:1px;min-width:100px;text-align:center;font-weight:700}
+.pond-card.empty .badge{background:#1a2745;color:#8aa0c2}
+.pond-card.filling .badge,.pond-card.receiving .badge{background:rgba(76,194,255,.22);color:#cde9ff}
+.pond-card.chlorinating .badge{background:rgba(110,231,183,.22);color:#c8f6dd}
+.pond-card.settling .badge{background:rgba(245,158,11,.22);color:#fde7b0}
+.pond-card.ready .badge,.pond-card.exchanging .badge{background:rgba(110,231,183,.28);color:#bbf7d0}
+.pond-card.transferring .badge{background:rgba(76,194,255,.28);color:#bae6fd}
+.pond-card.idle .badge,.pond-card.standby .badge{background:#1a2745;color:#93a7c6}
+.pond-card .info{flex:1;display:flex;flex-direction:column;gap:2px;min-width:0}
+.pond-card .label{font-size:12px;color:var(--ink);font-weight:600}
+.pond-card .desc{font-size:11px;color:var(--muted)}
+.pond-card .vol{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink);min-width:110px;text-align:right}
+
+.gauges{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:8px}
+.g{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px}
+.g .label{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+.g .value{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+.g .units{font-size:11px;color:var(--muted);margin-left:3px}
+.pumprow{display:flex;gap:8px;margin-top:8px}
+.pumpchip{flex:1;background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;text-align:center}
+.pumpchip .nm{font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+.pumpchip .st{font-size:13px;font-weight:600;margin-top:2px}
+.pumpchip.on{border-color:rgba(76,194,255,.6);box-shadow:0 0 16px rgba(76,194,255,.18)}
+.pumpchip.on .st{color:#cde9ff}
+.pumpchip.off .st{color:var(--muted)}
+@media(max-width:1100px){.config-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:680px){.status-bar{grid-template-columns:1fr}.config-grid{grid-template-columns:1fr}}
+
+
+.scene-clock{display:flex;align-items:center;gap:12px;background:rgba(15,26,50,.85);border:1px solid rgba(76,194,255,.18);border-radius:10px;padding:8px 14px}
+.sun-moon{width:30px;height:30px;border-radius:50%;flex-shrink:0;transition:all 400ms}
+.sun-moon.day{background:radial-gradient(circle,#fde047 0%,#f59e0b 70%);box-shadow:0 0 18px rgba(251,191,36,.55)}
+.sun-moon.night{background:radial-gradient(circle,#e2e8f0 0%,#94a3b8 70%);box-shadow:0 0 14px rgba(203,213,225,.35),inset -10px 0 0 rgba(15,26,50,.92)}
+.clock-text{display:flex;flex-direction:column;line-height:1.15}
+.clock-text .day-name{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);font-weight:600}
+.clock-text .time-val{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink)}
+
+
+.pump-chip{display:inline-flex;align-items:center;gap:8px;background:var(--panel-2);border:1px solid var(--border);border-radius:7px;padding:5px 11px;font-size:11px;color:var(--muted)}
+.pump-chip strong{color:#cde9ff;font-size:10px;text-transform:uppercase;letter-spacing:.4px;font-weight:700}
+.pump-chip.active{border-color:rgba(110,231,183,.55);background:rgba(110,231,183,.10);box-shadow:0 0 12px rgba(110,231,183,.15)}
+.pump-chip.active strong{color:#bbf7d0}
+.pump-chip.standby{border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.06)}
+.pump-chip.standby strong{color:#fde7b0}
+
+.cfg-tank .time .io-line{display:inline-block;line-height:1.5}
+.cfg-tank .time strong{color:#cde9ff;font-weight:600;font-size:11px;letter-spacing:.2px}
+.cfg-tank .time{font-size:11px;line-height:1.5;margin-top:4px}
+
+.btn-group{display:inline-flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+.strip{height:38px}
+.strip .lbl{font-size:9px;bottom:2px}
+.strip .tick.major{background:rgba(255,255,255,.18)}
+.strip .tick{background:rgba(255,255,255,.07)}
+
+.pump-legend{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;margin:0 0 14px 0;padding:10px 16px;background:linear-gradient(180deg,rgba(76,194,255,.06),rgba(110,231,183,.04));border:1px solid rgba(76,194,255,.18);border-radius:10px;font-size:12px;color:var(--muted)}
+.pump-legend .lg-title{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#cde9ff;font-weight:700;margin-right:6px}
+.pump-legend .lg-pump{display:inline-flex;align-items:center;gap:8px}
+.pump-legend .lg-name{color:#bbf7d0;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.6px;padding:3px 9px;background:rgba(110,231,183,.14);border:1px solid rgba(110,231,183,.4);border-radius:5px}
+.pump-legend .lg-arrow{color:var(--muted);font-size:14px;line-height:1}
+.pump-legend .lg-role{color:var(--ink);font-weight:500}
+
+.strip{height:44px}
+.strip .lbl{font-size:8px;bottom:2px;color:#6b7e9c;letter-spacing:-.2px}
+.strip .lbl.major{font-size:10px;color:#cde9ff;font-weight:600}
+.strip .tick.major{background:rgba(255,255,255,.25)}
+.strip .tick.mid{background:rgba(255,255,255,.12)}
+.strip .tick{background:rgba(255,255,255,.05)}
+
+
+/* Embedded variant — no inner box, sits flat directly inside the panel. */
+.pump-legend.embedded{margin:0 0 4px 0;padding:0;background:transparent;border:none;border-radius:0;gap:8px 14px}
+.pump-legend.embedded .lg-title{font-size:10px}
+/* "Pump Reference" sub-label sits inside the panel, above the chips. */
+.pump-ref-label{font-size:10px;text-transform:uppercase;letter-spacing:1.2px;color:rgba(76,194,255,.7);font-weight:700;margin:0 0 6px 2px}
+/* Compact single-row variant — all 3 chips fit on one line even at half width.
+   Tighter padding/gap/font-size; arrows shrink; chip labels stay readable. */
+.pump-legend.compact-row{flex-wrap:nowrap;gap:6px 10px;padding:7px 10px;font-size:11.5px;overflow:hidden}
+.pump-legend.compact-row .lg-pump{flex:0 1 auto;min-width:0;gap:6px;white-space:nowrap}
+.pump-legend.compact-row .lg-name{padding:2px 6px;font-size:10px;letter-spacing:.5px}
+.pump-legend.compact-row .lg-arrow{font-size:12px}
+.pump-legend.compact-row .lg-role{font-size:11.5px;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.pump-legend .lg-name.a{color:#fecaca;background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.55)}
+.pump-legend .lg-name.b{color:#fde7b0;background:rgba(251,191,36,.16);border-color:rgba(251,191,36,.5)}
+.pump-legend .lg-name.c{color:#bbf7d0;background:rgba(110,231,183,.16);border-color:rgba(110,231,183,.5)}
+
+.legend-bullets{list-style:none;padding:0;margin:12px 0 0 0;font-size:12px;line-height:1.55;color:var(--muted)}
+.legend-bullets li{padding-left:18px;position:relative;margin:5px 0}
+.legend-bullets li::before{content:"";position:absolute;left:4px;top:8px;width:6px;height:6px;border-radius:50%;background:#4cc2ff;box-shadow:0 0 5px rgba(76,194,255,.5)}
+.legend-bullets li strong{color:#cde9ff;font-weight:600}
+
+.scene-legend .lg{opacity:.35;transition:opacity 200ms}
+.scene-legend .lg.active{opacity:1}
+.scene-legend .lg.active .dot{box-shadow:0 0 8px currentColor;transform:scale(1.1)}
+
+.r-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.r-stat{display:flex;flex-direction:column;gap:2px;padding:9px 12px;background:var(--panel-2);border:1px solid var(--border);border-radius:8px}
+.r-stat .r-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+.r-stat .r-val{color:var(--ink);font-variant-numeric:tabular-nums;font-size:13px}
+.r-stat .r-val strong{font-size:18px;font-weight:700;color:#cde9ff;margin-right:3px}
+
+.pump-timelines{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:8px}
+.pt-title{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:8px}
+.pt-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.pt-lbl{font-size:10px;font-weight:700;letter-spacing:.4px;min-width:62px;padding:3px 7px;border-radius:4px;text-transform:uppercase;text-align:center}
+.pt-lbl.pt-a{background:rgba(239,68,68,.16);color:#fecaca;border:1px solid rgba(239,68,68,.45)}
+.pt-lbl.pt-b{background:rgba(251,191,36,.16);color:#fde7b0;border:1px solid rgba(251,191,36,.45)}
+.pt-lbl.pt-c{background:rgba(110,231,183,.16);color:#bbf7d0;border:1px solid rgba(110,231,183,.45)}
+.pt-bar{flex:1;position:relative;height:14px;background:rgba(255,255,255,.05);border-radius:4px;overflow:hidden}
+.pt-bar .seg{position:absolute;top:0;bottom:0;border-radius:3px;transition:width 150ms linear}
+.pt-bar .seg.a{background:linear-gradient(180deg,rgba(239,68,68,.55),rgba(239,68,68,.4))}
+.pt-bar .seg.b{background:linear-gradient(180deg,rgba(251,191,36,.65),rgba(251,191,36,.45))}
+.pt-bar .seg.c{background:linear-gradient(180deg,rgba(110,231,183,.6),rgba(110,231,183,.42))}
+.pt-bar .now{position:absolute;top:-2px;bottom:-2px;width:2px;background:#ffffff;box-shadow:0 0 6px rgba(255,255,255,.7);z-index:2}
+.pt-axis{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-left:72px;margin-top:4px;font-variant-numeric:tabular-nums}
+
+.pt-bar .seg.forecast{background:repeating-linear-gradient(45deg,rgba(251,191,36,.35) 0,rgba(251,191,36,.35) 4px,rgba(251,191,36,.15) 4px,rgba(251,191,36,.15) 8px);opacity:.7}
+
+.pt-lbl.pt-ch{background:rgba(34,211,238,.16);color:#a5f3fc;border:1px solid rgba(34,211,238,.45)}
+.pt-lbl.pt-st{background:rgba(167,139,250,.16);color:#ddd6fe;border:1px solid rgba(167,139,250,.45)}
+.pt-bar .seg.chlor.tp1{background:linear-gradient(180deg,rgba(34,211,238,.5),rgba(34,211,238,.35))}
+.pt-bar .seg.chlor.tp2{background:linear-gradient(180deg,rgba(34,211,238,.85),rgba(34,211,238,.6))}
+.pt-bar .seg.settle.tp1{background:linear-gradient(180deg,rgba(167,139,250,.5),rgba(167,139,250,.35))}
+.pt-bar .seg.settle.tp2{background:linear-gradient(180deg,rgba(167,139,250,.85),rgba(167,139,250,.6))}
+.pt-bar .seg.chlor.forecast{background:repeating-linear-gradient(45deg,rgba(34,211,238,.32) 0,rgba(34,211,238,.32) 4px,rgba(34,211,238,.12) 4px,rgba(34,211,238,.12) 8px);opacity:.8}
+.pt-bar .seg.settle.forecast{background:repeating-linear-gradient(45deg,rgba(167,139,250,.32) 0,rgba(167,139,250,.32) 4px,rgba(167,139,250,.12) 4px,rgba(167,139,250,.12) 8px);opacity:.8}
+
+.health-box{display:flex;align-items:flex-start;gap:14px;border:2px solid rgba(110,231,183,.55);background:linear-gradient(180deg,rgba(110,231,183,.10),rgba(110,231,183,.04));border-radius:12px;padding:14px 16px;margin-bottom:12px;transition:background 200ms,border-color 200ms}
+.health-box.ok{animation:healthPulse 2.8s ease-in-out infinite}
+.health-box.fail{border-color:rgba(239,68,68,.7);background:linear-gradient(180deg,rgba(239,68,68,.13),rgba(239,68,68,.05));animation:failAlarm 1.8s ease-in-out infinite}
+.health-icon{font-size:42px;font-weight:900;line-height:1;color:#6ee7b7;width:50px;height:50px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(110,231,183,.16);border:2px solid rgba(110,231,183,.55);text-shadow:0 0 8px rgba(110,231,183,.6)}
+.health-box.fail .health-icon{color:#fca5a5;background:rgba(239,68,68,.18);border-color:rgba(239,68,68,.7);text-shadow:0 0 10px rgba(252,165,165,.7)}
+.health-info{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
+.health-text{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#bbf7d0}
+.health-box.fail .health-text{color:#fecaca}
+.health-desc{font-size:11px;color:rgba(187,247,208,.7);line-height:1.4}
+.health-box.fail .health-desc{color:rgba(254,202,202,.85)}
+/* Animations are slower and use a smaller, softer glow (10-13px spread vs the
+   former 22-28px) so the pulse reads as ambient, not as flashing UI noise.
+   Background no longer swaps colors mid-cycle; only the box-shadow breathes. */
+@keyframes healthPulse{0%,100%{box-shadow:0 0 0 0 rgba(110,231,183,0)}50%{box-shadow:0 0 12px 1px rgba(110,231,183,.30)}}
+@keyframes failAlarm{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.10)}50%{box-shadow:0 0 13px 2px rgba(239,68,68,.42)}}
+
+.health-box.warn{border-color:rgba(251,191,36,.7);background:linear-gradient(180deg,rgba(251,191,36,.12),rgba(251,191,36,.04));animation:warnPulse 2.2s ease-in-out infinite}
+.health-box.warn .health-icon{color:#fbbf24;background:rgba(251,191,36,.18);border-color:rgba(251,191,36,.7);text-shadow:0 0 8px rgba(251,191,36,.55)}
+.health-box.warn .health-text{color:#fde68a}
+.health-box.warn .health-desc{color:rgba(254,243,199,.9)}
+@keyframes warnPulse{0%,100%{box-shadow:0 0 0 0 rgba(251,191,36,0)}50%{box-shadow:0 0 12px 1px rgba(251,191,36,.38)}}
+
+/* "Notice" state — soft purple breathing. Used for advisories that do NOT
+   cause system failure: TP construction (compliance not met), inactive
+   pumps with adequate supply, headroom >20%, TP1/TP2 imbalance, etc. */
+.health-box.notice{border-color:rgba(167,139,250,.75);background:linear-gradient(180deg,rgba(167,139,250,.13),rgba(167,139,250,.04));animation:noticeBlink 2.2s ease-in-out infinite}
+.health-box.notice .health-icon{color:#c4b5fd;background:rgba(167,139,250,.2);border-color:rgba(167,139,250,.75);text-shadow:0 0 8px rgba(167,139,250,.55)}
+.health-box.notice .health-text{color:#ddd6fe}
+.health-box.notice .health-desc{color:rgba(221,214,254,.88)}
+@keyframes noticeBlink{0%,100%{box-shadow:0 0 0 0 rgba(167,139,250,0)}50%{box-shadow:0 0 13px 2px rgba(167,139,250,.42)}}
+
+.btn:disabled,.btn:disabled:hover{opacity:.4;cursor:not-allowed;pointer-events:none;filter:grayscale(40%);box-shadow:none}
+
+.feed-calc{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.fc-inputs{display:flex;flex-wrap:wrap;gap:14px}
+.fc-field{display:flex;flex-direction:column;gap:5px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:600}
+.fc-field .fc-suffix{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--ink);text-transform:none;letter-spacing:.2px;font-weight:500}
+.fc-field input[type=text]{width:88px;background:var(--panel-2);color:var(--ink);border:1px solid var(--border-2);border-radius:6px;padding:6px 9px;font-size:13px;font-family:inherit;font-variant-numeric:tabular-nums}
+.fc-field input[type=text]:focus{outline:none;border-color:#4cc2ff}
+/* Two-column bottom: summary list (flex:1) + speedometer (auto). */
+.fc-bottom{display:flex;align-items:center;gap:10px;padding-top:8px;border-top:1px solid var(--border)}
+/* CSS Grid keeps the value column at a single x-position so all numbers stack
+   neatly under each other. Labels (col 1) size to the widest label;
+   values (col 2) sit immediately after at a consistent baseline. */
+.fc-summary{flex:1;min-width:0;display:grid;grid-template-columns:max-content max-content;column-gap:14px;row-gap:6px;align-items:baseline}
+.fc-row{display:contents}
+.fc-row>span{font-size:12px;color:var(--muted);white-space:nowrap}
+.fc-row strong{color:#cde9ff;font-size:13px;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.health-bullets{list-style:none;padding:0;margin:6px 0 0 0;display:flex;flex-direction:column;gap:5px}
+.health-bullets li{position:relative;padding-left:14px;font-size:11px;line-height:1.5;color:rgba(187,247,208,.82)}
+.health-bullets li::before{content:"●";position:absolute;left:0;top:0;color:#6ee7b7;font-size:8px;line-height:1.9}
+/* Sub-bullet (used for fix-option lists). Indented, lighter, with a small
+   arrow marker — visually subordinate to the main issue bullet above it. */
+.health-bullets li.sub{padding-left:26px;font-size:10.5px;color:rgba(255,255,255,.62);margin-top:-2px;line-height:1.55}
+.health-bullets li.sub::before{content:"↳";color:rgba(255,255,255,.45);font-size:10px;left:12px;top:1px;line-height:1.4}
+.health-box.warn .health-bullets li{color:rgba(254,243,199,.92)}
+.health-box.warn .health-bullets li::before{color:#fbbf24}
+.health-box.warn .health-bullets li.sub{color:rgba(254,243,199,.65)}
+.health-box.warn .health-bullets li.sub::before{color:rgba(251,191,36,.55)}
+.health-box.fail .health-bullets li{color:rgba(254,202,202,.95)}
+.health-box.fail .health-bullets li::before{color:#fca5a5}
+.health-box.fail .health-bullets li.sub{color:rgba(254,202,202,.70)}
+.health-box.fail .health-bullets li.sub::before{color:rgba(252,165,165,.55)}
+.health-box.notice .health-bullets li{color:rgba(221,214,254,.92)}
+.health-box.notice .health-bullets li::before{color:#c4b5fd}
+.health-box.notice .health-bullets li.sub{color:rgba(221,214,254,.65)}
+.health-box.notice .health-bullets li.sub::before{color:rgba(196,181,253,.55)}
+
+.compliance-gauge{display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0}
+.compliance-gauge svg{width:150px;height:110px;flex-shrink:0}
+#complNeedle{transform-origin:80px 80px;transition:transform .9s cubic-bezier(0.34,1.4,0.5,1)}
+#complArc{transition:stroke-dashoffset .9s cubic-bezier(0.34,1.4,0.5,1),stroke .35s ease,filter .35s ease}
+#complArc.compl-red{stroke:#ef4444;filter:drop-shadow(0 0 6px rgba(239,68,68,0.6))}
+#complArc.compl-amber{stroke:#fbbf24;filter:drop-shadow(0 0 6px rgba(251,191,36,0.6))}
+#complArc.compl-lime{stroke:#a3e635;filter:drop-shadow(0 0 6px rgba(163,230,53,0.6))}
+#complArc.compl-green{stroke:#34d399;filter:drop-shadow(0 0 7px rgba(52,211,153,0.7))}
+#complValue{transition:fill .35s ease}
+#complValue.compl-red{fill:#fecaca}
+#complValue.compl-amber{fill:#fde68a}
+#complValue.compl-lime{fill:#d9f99d}
+#complValue.compl-green{fill:#bbf7d0}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+<!-- DELOS logo (3 stacked wave shapes) — inline SVG so no external asset needed -->
+<svg class="logo" viewBox="0 0 140 110" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DELOS logo">
+<defs>
+<linearGradient id="logoTop" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" stop-color="#4ec5ee"/>
+<stop offset="100%" stop-color="#1d92cf"/>
+</linearGradient>
+<linearGradient id="logoMid" x1="0%" y1="0%" x2="100%" y2="100%">
+<stop offset="0%" stop-color="#3d72b9"/>
+<stop offset="100%" stop-color="#264f99"/>
+</linearGradient>
+</defs>
+<!-- Top wave -->
+<path d="M 12,12 C 32,2 52,2 70,12 C 88,22 108,22 128,12 L 128,28 C 108,38 88,38 70,28 C 52,18 32,18 12,28 Z" fill="url(#logoTop)"/>
+<!-- Middle wave -->
+<path d="M 12,42 C 32,32 52,32 70,42 C 88,52 108,52 128,42 L 128,58 C 108,68 88,68 70,58 C 52,48 32,48 12,58 Z" fill="url(#logoMid)"/>
+<!-- Bottom wave (reflection / shadow) -->
+<path d="M 12,72 C 32,62 52,62 70,72 C 88,82 108,82 128,72 L 128,88 C 108,98 88,98 70,88 C 52,78 32,78 12,88 Z" fill="#152d4a"/>
+</svg>
+<div>
+<h1>(PT. BAS) Pump Performance Simulation — Configurable Cycle</h1>
+<div class="subtitle">Set tank dimensions and pump rates, then press <strong style="color:#bbf7d0">▶ Play</strong> to run.</div>
+</div>
+</header>
+
+<div class="section">
+<div class="section-title">Pond Configuration</div>
+<div class="config">
+<div class="config-head">
+<span class="subtitle">Volume = Area × Fill Height</span>
+<div class="btn-group"><button class="btn warn" id="btnDefaults">Set Default &amp; Reset</button><button class="btn primary" id="btnApply">Apply &amp; Reset</button></div>
+</div>
+<div class="config-grid">
+<div class="cfg-tank">
+<div class="name">Reservoir</div>
+<div class="inputs">
+<input type="text" inputmode="decimal" id="resArea" value="30149" /> m²
+<span class="x">×</span>
+<input type="text" inputmode="decimal" id="resHeight" value="2.38" /> m
+</div>
+<div class="vol-out">Total Volume: <span id="resVol">71,755</span> m³</div>
+<div class="time" id="resTime">—</div>
+</div>
+<div class="cfg-tank">
+<div class="name">Treatment Pond 1</div>
+<div class="inputs">
+<input type="text" inputmode="decimal" id="tp1Area" value="20686" /> m²
+<span class="x">×</span>
+<input type="text" inputmode="decimal" id="tp1Height" value="1.29" /> m
+</div>
+<div class="vol-out">Total Volume: <span id="tp1Vol">26,685</span> m³</div>
+<div class="time" id="tp1Time">—</div>
+</div>
+<div class="cfg-tank">
+<div class="name">Treatment Pond 2</div>
+<div class="inputs">
+<input type="text" inputmode="decimal" id="tp2Area" value="20995" /> m²
+<span class="x">×</span>
+<input type="text" inputmode="decimal" id="tp2Height" value="1.29" /> m
+</div>
+<div class="vol-out">Total Volume: <span id="tp2Vol">27,084</span> m³</div>
+<div class="time" id="tp2Time">—</div>
+</div>
+<div class="cfg-tank">
+<div class="name">Cultivation Pond</div>
+<div class="inputs">
+<input type="text" inputmode="decimal" id="cpArea" value="119879" /> m²
+<span class="x">×</span>
+<input type="text" inputmode="decimal" id="cpHeight" value="1.3" /> m
+</div>
+<div class="vol-out">Total Volume: <span id="cpVol">155,843</span> m³</div>
+<div class="time" id="cpTime">Water-Exchange Model — Level Stays Constant</div>
+</div>
+</div>
+<div class="cfg-foot">
+<span>Press <strong>Apply &amp; Reset</strong> to commit dimensions and restart the cycle.</span>
+<span id="cfgStatus" style="color:#6ee7b7"></span>
+</div>
+</div>
+</div>
+
+<!-- Side-by-side row: Feed & Water Demand + Sea Pumps share one horizontal
+     band. Wraps to two stacked rows on narrow viewports via flex-wrap. -->
+<div class="section-row">
+<div class="section">
+<div class="section-title">Feed &amp; Water Demand</div>
+<div class="feed-calc" id="feedCalc">
+<div class="fc-inputs">
+<label class="fc-field">Expected feed
+<span class="fc-suffix"><input type="text" inputmode="decimal" id="feedPer2500" value="235" /> kg / 2,500 m² / day</span>
+</label>
+<label class="fc-field">Water exchange standard
+<span class="fc-suffix"><input type="text" inputmode="decimal" id="waterPerKg" value="3" /> m³ / kg</span>
+</label>
+</div>
+<!-- Two-column bottom row: summary list on the left (label tight to value),
+     compliance speedometer on the right. -->
+<div class="fc-bottom">
+<div class="fc-summary">
+<div class="fc-row"><span>Total feed plan</span><strong id="feedTotal">— kg/day</strong></div>
+<div class="fc-row"><span>Required water (feed × standard)</span><strong id="waterRequired">— m³/day</strong></div>
+<div class="fc-row"><span>Pump cycle delivery</span><strong id="pumpDelivery">— m³/day</strong></div>
+<div class="fc-row"><span>Achievable m³/kg</span><strong id="achievableRatio">—</strong></div>
+</div>
+<div class="compliance-gauge" id="complianceGauge">
+<svg viewBox="0 0 160 118" aria-hidden="true">
+<path d="M 20 80 A 60 60 0 0 1 140 80" stroke="#1f2c4a" stroke-width="10" fill="none" stroke-linecap="round"/>
+<path id="complArc" d="M 20 80 A 60 60 0 0 1 140 80" stroke="#34d399" stroke-width="10" fill="none" stroke-linecap="round" stroke-dasharray="188.496" stroke-dashoffset="188.496"/>
+<text x="20" y="93" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="8" font-family="system-ui">0%</text>
+<text x="80" y="14" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="8" font-family="system-ui">50%</text>
+<text x="140" y="93" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="8" font-family="system-ui">100%</text>
+<line id="complNeedle" x1="80" y1="80" x2="80" y2="28" stroke="#cde9ff" stroke-width="2" stroke-linecap="round"/>
+<circle cx="80" cy="80" r="5" fill="#0f1a32" stroke="#cde9ff" stroke-width="1.2"/>
+<text id="complValue" x="80" y="106" text-anchor="middle" fill="#cde9ff" font-size="22" font-weight="800" font-family="system-ui" font-variant-numeric="tabular-nums">0</text>
+<text x="80" y="116" text-anchor="middle" fill="rgba(255,255,255,0.55)" font-size="7" font-weight="600" font-family="system-ui" letter-spacing="0.8">% COMPLIANCE</text>
+</svg>
+</div>
+</div>
+</div>
+</div>
+
+<div class="section">
+<div class="section-title">Sea Pumps</div>
+<div class="sp-panel">
+<!-- "Pump Reference" sub-label sits above the legend chips. The three chips
+     (Pump A · Pump B · Pump C) lay out on a single inline row using compact
+     padding so they fit even at half-width. -->
+<div class="pump-ref-label">Pump Reference</div>
+<div class="pump-legend embedded compact-row">
+<span class="lg-pump"><span class="lg-name a">Pump A</span><span class="lg-arrow">→</span><span class="lg-role">Sea Pumps</span></span>
+<span class="lg-pump"><span class="lg-name b">Pump B</span><span class="lg-arrow">→</span><span class="lg-role">Reservoir Pumps</span></span>
+<span class="lg-pump"><span class="lg-name c">Pump C</span><span class="lg-arrow">→</span><span class="lg-role">Treatment Pond Pumps</span></span>
+</div>
+<!-- Labeled-field control bar. Top row = numeric inputs in fixed-width pills,
+     bottom row = pump toggle grid (wraps freely as N grows from 1 → 12 without
+     pushing other controls around). -->
+<div class="sp-bar">
+<!-- INPUTS — tight, content-sized pills, snug on the left -->
+<div class="sp-field" title="Total number of sea pumps installed">
+<label>Pump Count</label>
+<span class="pumpcount-grp">
+<button type="button" class="ctr-btn" id="seaPumpMinus" aria-label="Remove one sea pump">−</button>
+<strong id="seaPumpTotalCount">7</strong>
+<button type="button" class="ctr-btn" id="seaPumpPlus" aria-label="Add one sea pump">+</button>
+</span>
+</div>
+<div class="sp-field" title="Average flow rate per pump (m³/h)">
+<label>Avg Rate · Pump</label>
+<span class="sp-input"><input type="text" inputmode="decimal" id="seaAvg" value="197.3" /><span class="sp-unit">m³/h</span></span>
+</div>
+<div class="sp-field" title="How many hours per day Pump A is allowed to run">
+<label>Pump A Duty</label>
+<span class="sp-input sp-input-amber"><input type="text" inputmode="decimal" id="pumpAHours" value="20" /><span class="sp-unit">h / day</span></span>
+</div>
+<!-- "=" visual cue between inputs and computed result -->
+<div class="sp-eq" aria-hidden="true">=</div>
+<!-- RESULT CARD — pinned right, two-tier hierarchy: dominant "Per Cycle" daily
+     total on top, supporting "Total Flow" hourly rate below it, separated by a
+     thin divider. No more dead space between inputs and outputs. -->
+<div class="sp-result">
+<div class="sp-result-row sp-result-main">
+<span class="sp-result-label">Per Cycle</span>
+<strong id="seaPumpDaily">27,622</strong>
+<span class="sp-result-unit">m³ / day</span>
+</div>
+<div class="sp-result-row sp-result-sub">
+<span class="sp-result-label">Total Flow</span>
+<strong id="seaPumpTotal">1,381 m³/h</strong>
+<span class="sp-result-meta">(<span id="seaCount">7</span>/<span id="seaPumpTotalCount2">7</span> ON)</span>
+</div>
+</div>
+</div>
+<!-- Active-pumps row: small label + toggle grid that wraps freely for N ∈ [1, 12]. -->
+<div class="sp-toggles-wrap">
+<label class="sp-toggle-label">Active Pumps</label>
+<div class="toggles-row" id="seaPumpGrid"></div>
+</div>
+</div>
+</div>
+</div><!-- /.section-row -->
+
+<div class="section">
+<div class="section-title">Playback</div>
+<div class="controls">
+<div class="group">
+<button class="btn success" id="btnPlay">▶ Play</button>
+<button class="btn warn" id="btnReset">↻ Reset</button>
+</div>
+<div class="divider"></div>
+<div class="group" style="flex:1;min-width:300px">
+<label>Speed</label>
+<input type="range" id="speedSlider" min="-1" max="2.3" step="0.01" value="0" />
+<input type="number" id="speedInput" min="0.1" max="200" step="0.1" value="1" />
+<span class="speed-disp"><span id="speedDisp">1.0</span>×</span>
+</div>
+<div class="divider"></div>
+<div class="group">
+<label>Preset</label>
+<button class="preset" data-speed="0.5">0.5×</button>
+<button class="preset active" data-speed="1">1×</button>
+<button class="preset" data-speed="2">2×</button>
+<button class="preset" data-speed="5">5×</button>
+<button class="preset" data-speed="10">10×</button>
+<button class="preset" data-speed="30">30×</button>
+<button class="preset" data-speed="100">100×</button>
+</div>
+</div>
+</div>
+
+<div class="section">
+<div class="scene-card">
+<div class="scene-header">
+<div class="scene-status">
+<span class="pill paused" id="scenePill">⏸ Paused</span>
+<span class="pump-chip" id="pmpChipA"><strong>Pump A</strong><span id="pmpAText">idle</span></span>
+<span class="pump-chip" id="pmpChipB"><strong>Pump B</strong><span id="pmpBText">idle</span></span>
+<span class="pump-chip" id="pmpChipC"><strong>Pump C</strong><span id="pmpCText">idle</span></span>
+</div>
+<div class="scene-clock">
+<div class="sun-moon day" id="sunMoon"></div>
+<div class="clock-text">
+<div class="day-name" id="dayLabel">Monday · Day 1</div>
+<div class="time-val" id="timeLabel">06:00</div>
+</div>
+</div>
+</div>
+<canvas id="scene" width="1200" height="540"></canvas>
+<div class="scene-legend">
+<span class="lg" id="lgFlow"><span class="dot" style="background:#22d3ee"></span>Active flow</span>
+<span class="lg" id="lgExch"><span class="dot" style="background:#8a6a3a"></span>Exchange outflow</span>
+<span class="lg" id="lgChlor"><span class="dot" style="background:#fbbf24"></span>Chlorine bubble</span>
+<span class="lg" id="lgSed"><span class="dot" style="background:#cbd5e1"></span>Sediment</span>
+<span class="lg" id="lgBubble"><span class="dot" style="background:#4cc2ff"></span>Fresh-water bubble</span>
+<span class="lg" id="lgPumpAct"><span class="dot" style="background:rgba(76,194,255,.6);border:1px solid rgba(76,194,255,.9)"></span>Active pump</span>
+<span class="lg" id="lgPumpIdle"><span class="dot" style="background:#5a6a8a"></span>Idle pump</span>
+</div>
+<div class="timeline">
+<div class="head"><span>Daily Schedule — Pump C Windows</span><span id="windowStatus">Schedule: 06:00 - 10:00 AM · 14:00 - 18:00 PM · 20:00 - 23:00 PM</span></div>
+<div class="strip" id="strip"></div>
+</div>
+</div>
+</div>
+
+<div class="section">
+<div class="section-title">Pond Status &amp; System Readings</div>
+<div class="status-bar">
+<div class="card">
+<div class="health-box ok" id="healthBox">
+<div class="health-icon" id="healthIcon">✓</div>
+<div class="health-info">
+<div class="health-text" id="healthText">System Running Well</div>
+<ul class="health-bullets" id="healthBullets"><li>All pumps operating within normal parameters.</li></ul>
+</div>
+</div>
+<div class="subtitle">Pond Status</div>
+<div class="pond-card empty" id="card-res">
+<span class="badge" id="res-phase">EMPTY</span>
+<div class="info"><span class="label">Reservoir</span><span class="desc" id="res-desc">Idle</span></div>
+<span class="vol"><span id="res-vol">0</span> m³</span>
+</div>
+<div class="pond-card ready" id="card-tp1">
+<span class="badge" id="tp1-phase">READY</span>
+<div class="info"><span class="label">Treatment Pond 1</span><span class="desc" id="tp1-desc">Ready to transfer</span></div>
+<span class="vol"><span id="tp1-vol">0</span> m³</span>
+</div>
+<div class="pond-card ready" id="card-tp2">
+<span class="badge" id="tp2-phase">READY</span>
+<div class="info"><span class="label">Treatment Pond 2</span><span class="desc" id="tp2-desc">Ready to transfer</span></div>
+<span class="vol"><span id="tp2-vol">0</span> m³</span>
+</div>
+<div class="pond-card standby" id="card-cp">
+<span class="badge" id="cp-phase">STANDBY</span>
+<div class="info"><span class="label">Cultivation Pond</span><span class="desc" id="cp-desc">Operating level — water-exchange ready</span></div>
+<span class="vol"><span id="cp-vol">0</span> m³</span>
+</div>
+<div class="pumprow">
+<div class="pumpchip off" id="pc-A"><div class="nm">Pump A</div><div class="st" id="pc-A-st">Idle</div></div>
+<div class="pumpchip off" id="pc-B"><div class="nm">Pump B</div><div class="st" id="pc-B-st">Idle</div></div>
+<div class="pumpchip off" id="pc-C"><div class="nm">Pump C</div><div class="st" id="pc-C-st">Idle</div></div>
+</div>
+</div>
+<div class="card">
+<div class="subtitle">System Readings</div>
+<div class="r-stats">
+<div class="r-stat"><div class="r-label">Total Water Exchanged</div><div class="r-val"><strong id="v-exch">0</strong> m³</div></div>
+<div class="r-stat"><div class="r-label">Exchange Cycles (100%)</div><div class="r-val"><strong id="v-cycles">0</strong> cycles</div></div>
+</div>
+<div class="pump-timelines">
+<div class="pt-title">Event Timelines · Today (06:00 → 06:00 next day)</div>
+<div class="pt-row"><span class="pt-lbl pt-a">Pump A</span><div class="pt-bar" id="pt-a-bar"></div></div>
+<div class="pt-row"><span class="pt-lbl pt-b">Pump B</span><div class="pt-bar" id="pt-b-bar"></div></div>
+<div class="pt-row"><span class="pt-lbl pt-c">Pump C</span><div class="pt-bar" id="pt-c-bar"></div></div>
+<div class="pt-row"><span class="pt-lbl pt-ch">Chlorination</span><div class="pt-bar" id="pt-ch-bar"></div></div>
+<div class="pt-row"><span class="pt-lbl pt-st">Settling</span><div class="pt-bar" id="pt-st-bar"></div></div>
+<div class="pt-axis"><span>06:00</span><span>12:00</span><span>18:00</span><span>00:00</span><span>06:00</span></div>
+</div>
+<ul class="legend-bullets">
+<li><strong>Pump A:</strong> respects its daily duty hours (rest period each day).</li>
+<li><strong>Pump B:</strong> dynamic rate = TP capacity ÷ 11.5 h (fills a TP in 11.5 h when reservoir has water).</li>
+<li><strong>Pump C:</strong> dynamic rate = TP capacity ÷ 11 h, so each TP drains in exactly 11 h of pumping across the three windows.</li>
+<li><strong>TP Chlorination:</strong> 0.5 h, then 12 h settling.</li>
+<li><strong>CP:</strong> water-exchange model — incoming water displaces an equal volume, so the level stays at operating capacity.</li>
+</ul>
+</div>
+</div>
+</div>
+
+</div>
+<script>
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  DELOS · (PT. BAS) Pump Performance Simulation                           ║
+// ║  Single-file HTML simulation: state machine + canvas renderer + UI.     ║
+// ╠══════════════════════════════════════════════════════════════════════════╣
+// ║  SCRIPT ORGANISATION (top → bottom)                                      ║
+// ║    1. Formatting helpers   — fmt(), parseNum()                           ║
+// ║    2. Constants            — WIN windows, START_H, pump durations, …     ║
+// ║    3. Sea-pump state       — count, rate, active toggles, +/- count UI   ║
+// ║    4. Pond capacities      — area × height → RES_CAP, TP1_CAP, …         ║
+// ║    5. Initial state        — initialState() returns the simulation S obj ║
+// ║    6. Time helpers         — hod(), dIdx(), snapshotKey()                ║
+// ║    7. Physics step         — advanceSubStep(dh) runs one fixed substep   ║
+// ║    8. Particle/visual ticks                                              ║
+// ║    9. Scene drawing        — drawTank, drawPump, draw()                  ║
+// ║   10. DOM updates          — pond cards, pump chips, health-box, gauge   ║
+// ║   11. Smart bottleneck analyzer (inside updateDOM)                       ║
+// ║   12. Playback controls    — Play/Reset, speed slider, preset buttons    ║
+// ║   13. Forecast             — forecastPumpBToday() projects today's bars  ║
+// ║   14. Event timelines      — Pump A/B/C + Chlorination/Settling bars     ║
+// ║   15. Main loop            — requestAnimationFrame → step + draw + DOM   ║
+// ║                                                                          ║
+// ║  DETERMINISM                                                             ║
+// ║    Simulation uses a fixed-timestep accumulator (FIXED_DH = 0.01h),      ║
+// ║    so identical inputs produce identical results at any playback speed.  ║
+// ║                                                                          ║
+// ║  FORECAST CONTRACT                                                       ║
+// ║    forecastPumpBToday() mutates state during projection, then RESTORES   ║
+// ║    every mutable field (simHours, res, cul, tp vols/phases, prep stage,  ║
+// ║    pump active/angle, exchange counters, daily counters, live-line state,║
+// ║    AND failure flags). Any new mutable global must be added to BOTH      ║
+// ║    the snapshot block AND the restore block in that function.            ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+(function(){
+const scene=document.getElementById('scene');let SW=1200,SH=540,sctx;
+function fit(){const dpr=window.devicePixelRatio||1,r=scene.getBoundingClientRect(),w=r.width,h=540;scene.width=Math.round(w*dpr);scene.height=Math.round(h*dpr);scene.style.height=h+'px';sctx=scene.getContext('2d');sctx.setTransform(dpr,0,0,dpr,0,0);SW=w;SH=h}
+window.addEventListener('resize',fit);fit();
+
+// ============================================================================
+// FORMATTING HELPERS
+// ============================================================================
+function fmt(n,d){d=d||0;if(typeof n!=='number'||!isFinite(n))return '0';return n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d})}
+function parseNum(v){return parseFloat(String(v==null?'':v).replace(/,/g,''))||0}
+
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+const WIN=[[6,10],[14,18],[20,23]];                // Pump C daily windows (clock hours)
+const DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+const START_H=6;                                   // simulation begins at clock 06:00
+// Physics durations
+const CHLORINATE_HOURS=0.5;                        // chlorination phase length
+const SETTLE_HOURS=12;                             // settling phase length
+const PUMP_B_FILL_HOURS=11.5;                      // time Pump B takes to fill one TP
+const PUMP_C_DRAIN_HOURS=11;                       // time Pump C takes to drain one TP (across 3 windows)
+const CP_CONSUMPTION_RATE=180;                     // m³/h farm consumption when no inflow
+const FAIL_GRACE_HOURS=0.5;                        // continuous starvation before system marks itself failed
+const RES_EMPTY_THRESHOLD=1;                       // m³ — reservoir considered empty below this
+const TP_EMPTY_MARGIN=2;                           // m³ minimum + cap*0.00005 — snap-to-empty threshold
+const TP_FULL_MARGIN=2;                            // m³ minimum + cap*0.0005 — snap-to-full threshold
+const PHASE_LABEL={empty:'EMPTY',filling:'FILLING',chlorinating:'CHLORINATING',settling:'SETTLING',ready:'READY',transferring:'TRANSFERRING',idle:'IDLE',receiving:'RECEIVING',exchanging:'EXCHANGING',standby:'STANDBY'};
+// A TP marked 'transferring' but with Pump C currently NOT actively pumping it
+// (i.e., between windows) should display as READY.
+function tpStatus(tp){
+  if(tp.phase==='transferring' && !(S && S.pumpC && S.pumpC.active && S.pumpC.source===tp)) return 'ready';
+  return tp.phase;
+}
+
+// Sea pumps
+// ============================================================================
+// SEA PUMPS — shared average rate × N toggles (N is user-adjustable via +/−)
+// ============================================================================
+let seaAvgRate=197.3;
+const SEA_PUMP_MIN=1, SEA_PUMP_MAX=12, SEA_PUMP_DEFAULT=7;
+let seaPumpCount=SEA_PUMP_DEFAULT;
+const seaActive=[];for(let i=0;i<seaPumpCount;i++)seaActive.push(true);
+function getSeaActiveCount(){let c=0;for(const a of seaActive)if(a)c++;return c}
+function getSeaFlow(){return seaAvgRate*getSeaActiveCount()}
+
+// ============================================================================
+// CONFIGURABLE CAPACITIES (computed from user input area × height)
+// ============================================================================
+let RES_CAP=71755, TP1_CAP=26685, TP2_CAP=27084, CP_CAP=155843;
+
+function applyCapacities(){
+  const rA=parseNum(document.getElementById('resArea').value)||30149;
+  const rH=parseNum(document.getElementById('resHeight').value)||2.38;
+  const t1A=parseNum(document.getElementById('tp1Area').value)||20686;
+  const t1H=parseNum(document.getElementById('tp1Height').value)||1.29;
+  const t2A=parseNum(document.getElementById('tp2Area').value)||20995;
+  const t2H=parseNum(document.getElementById('tp2Height').value)||1.29;
+  const cA=parseNum(document.getElementById('cpArea').value)||119879;
+  const cH=parseNum(document.getElementById('cpHeight').value)||1.3;
+  RES_CAP=Math.max(1,rA*rH);TP1_CAP=Math.max(1,t1A*t1H);TP2_CAP=Math.max(1,t2A*t2H);CP_CAP=Math.max(1,cA*cH);
+  document.getElementById('resVol').textContent=fmt(Math.round(RES_CAP));
+  document.getElementById('tp1Vol').textContent=fmt(Math.round(TP1_CAP));
+  document.getElementById('tp2Vol').textContent=fmt(Math.round(TP2_CAP));
+  document.getElementById('cpVol').textContent=fmt(Math.round(CP_CAP));
+  const sf=getSeaFlow();
+  document.getElementById('resTime').innerHTML='<span class="io-line"><strong>Input Pump A:</strong> '+(sf>0?(RES_CAP/sf).toFixed(1):'—')+' h @ '+fmt(Math.round(sf))+' m³/h</span>';
+  document.getElementById('tp1Time').innerHTML='<span class="io-line"><strong>Input Pump B:</strong> 11.5 h @ '+fmt(Math.round(TP1_CAP/11.5))+' m³/h</span><br><span class="io-line"><strong>Output Pump C:</strong> 11.0 h @ '+fmt(Math.round(TP1_CAP/11))+' m³/h</span>';
+  document.getElementById('tp2Time').innerHTML='<span class="io-line"><strong>Input Pump B:</strong> 11.5 h @ '+fmt(Math.round(TP2_CAP/11.5))+' m³/h</span><br><span class="io-line"><strong>Output Pump C:</strong> 11.0 h @ '+fmt(Math.round(TP2_CAP/11))+' m³/h</span>';
+  if(typeof S!=='undefined'&&S&&S.tps){S.tps[0].cap=TP1_CAP;S.tps[1].cap=TP2_CAP}
+}
+
+// Sea pump UI
+const seaPumpGrid=document.getElementById('seaPumpGrid');
+function updateSeaTotal(){
+  const t=getSeaFlow(),c=getSeaActiveCount();
+  document.getElementById('seaPumpTotal').textContent=fmt(Math.round(t))+' m³/h';
+  document.getElementById('seaCount').textContent=c;
+  // "Per Cycle" = count × rate × duty hours = total water Pump A delivers in
+  // one full 24h cycle. pumpAMaxHours is declared before this function is
+  // first called (see initialization order below).
+  const daily=t*pumpAMaxHours;
+  const dailyEl=document.getElementById('seaPumpDaily');
+  if(dailyEl)dailyEl.textContent=fmt(Math.round(daily));
+  // Pump count appears in TWO places: the −/+ pill and the "Total Flow" sub-label.
+  const totEl=document.getElementById('seaPumpTotalCount');if(totEl)totEl.textContent=seaPumpCount;
+  const totEl2=document.getElementById('seaPumpTotalCount2');if(totEl2)totEl2.textContent=seaPumpCount;
+  const minus=document.getElementById('seaPumpMinus'),plus=document.getElementById('seaPumpPlus');
+  if(minus)minus.disabled=(seaPumpCount<=SEA_PUMP_MIN);
+  if(plus)plus.disabled=(seaPumpCount>=SEA_PUMP_MAX);
+}
+// ============================================================================
+// SEA PUMP UI — toggle buttons + average-rate input + +/− count adjuster
+// ============================================================================
+function buildSeaPumpGrid(){
+  seaPumpGrid.innerHTML='';
+  for(let i=0;i<seaPumpCount;i++){
+    const btn=document.createElement('button');
+    btn.className='toggle '+(seaActive[i]?'on':'off');
+    btn.dataset.i=i;
+    btn.textContent='P'+(i+1);
+    btn.title='Pump #'+(i+1);
+    btn.addEventListener('click',function(){
+      seaActive[i]=!seaActive[i];
+      btn.classList.toggle('on',seaActive[i]);
+      btn.classList.toggle('off',!seaActive[i]);
+      updateSeaTotal();applyCapacities();
+    });
+    seaPumpGrid.appendChild(btn);
+  }
+  updateSeaTotal();
+}
+function changeSeaPumpCount(delta){
+  const next=Math.min(SEA_PUMP_MAX,Math.max(SEA_PUMP_MIN,seaPumpCount+delta));
+  if(next===seaPumpCount)return;
+  if(next>seaPumpCount){for(let i=seaPumpCount;i<next;i++)seaActive[i]=true}
+  else{seaActive.length=next}
+  seaPumpCount=next;
+  buildSeaPumpGrid();applyCapacities();
+}
+document.getElementById('seaPumpMinus').addEventListener('click',function(){changeSeaPumpCount(-1)});
+document.getElementById('seaPumpPlus').addEventListener('click',function(){changeSeaPumpCount(+1)});
+const seaAvgInput=document.getElementById('seaAvg');
+seaAvgInput.value=fmt(seaAvgRate,seaAvgRate%1===0?0:1);
+seaAvgInput.addEventListener('input',function(){
+  seaAvgRate=Math.max(0,parseNum(seaAvgInput.value));
+  updateSeaTotal();applyCapacities();
+});
+seaAvgInput.addEventListener('blur',function(){
+  seaAvgInput.value=fmt(seaAvgRate,seaAvgRate%1===0?0:1);
+});
+
+// IMPORTANT: pumpAMaxHours must be declared BEFORE buildSeaPumpGrid() so
+// updateSeaTotal() (called inside) can read it without hitting the TDZ.
+let pumpAMaxHours=20; // hours/day Pump A allowed (resets every 24 sim hours)
+let systemFailed=false;
+let failureReason='';
+let failTimer=0; // sim hours of continuous starvation
+
+buildSeaPumpGrid();
+
+// Pump A daily duty input
+(function(){
+  const inp=document.getElementById('pumpAHours');
+  if(!inp)return;
+  inp.addEventListener('input',function(){
+    let v=parseNum(inp.value);v=Math.max(0,Math.min(24,v));
+    pumpAMaxHours=v;
+    if(typeof buildPumpTimelines==='function')buildPumpTimelines();
+    if(typeof updateSeaTotal==='function')updateSeaTotal();  // refresh "Per Cycle"
+  });
+  inp.addEventListener('blur',function(){
+    let v=parseNum(inp.value);v=Math.max(0,Math.min(24,v));
+    pumpAMaxHours=v;
+    inp.value=fmt(v,v%1===0?0:1);
+    if(typeof updateSeaTotal==='function')updateSeaTotal();
+  });
+})();
+
+// ============================================================================
+// PLAYBACK STATE
+// ============================================================================
+let HPS=1.0, playing=false;
+
+// ============================================================================
+// SIMULATION STATE
+// ============================================================================
+function makeSediment(){const a=[];for(let i=0;i<35;i++)a.push({x:Math.random(),y:.92,vy:0,r:.7+Math.random()*1.3,alpha:.4+Math.random()*.4,settled:true});return a}
+function initialState(){return{
+simHours:0,sway:0,res:0,cul:CP_CAP,exchanged:0,exchangedCycle:0,exchangeCycles:0,dailyExchange:0,_dailyExchangeCycle:0,_liveLineTpId:null,_liveLineValue:0,pumpBSegments:[],pumpBDay:0,chlorSegments:[],settleSegments:[],eventCycle:0,_lastPhase:{},
+tps:[{id:1,vol:TP1_CAP,cap:TP1_CAP,phase:'ready',phaseElapsed:0,sediment:makeSediment(),bubbles:[]},
+     {id:2,vol:TP2_CAP,cap:TP2_CAP,phase:'ready',phaseElapsed:0,sediment:makeSediment(),bubbles:[]}],
+prep:{target:null,stage:'idle'},
+pumpA:{active:false,angle:0},pumpB:{active:false,target:null,angle:0},pumpC:{active:false,source:null,angle:0},
+partsA:[],partsB:[],partsC:[],partsCex:[],cpBubbles:[],sludge:[]}}
+let S=initialState();
+function seedP(arr,n){arr.length=0;for(let i=0;i<n;i++)arr.push({u:Math.random(),jitter:(Math.random()-.5)*3,size:1.6+Math.random()*1.6,a:.55+Math.random()*.35})}
+seedP(S.partsA,60);seedP(S.partsB,60);seedP(S.partsC,60);seedP(S.partsCex,40);
+
+// ============================================================================
+// DERIVED RATES
+// ============================================================================
+function getPumpCRate(){
+  if(S.pumpC.source)return S.pumpC.source.cap/11;
+  for(const t of S.tps)if(t.phase==='transferring')return t.cap/11;
+  for(const t of S.tps)if(t.phase==='ready')return t.cap/11;
+  return 0;
+}
+function getPumpBRate(){
+  if(S.pumpB.target)return S.pumpB.target.cap/11.5;
+  for(const t of S.tps)if(t.phase==='filling')return t.cap/11.5;
+  for(const t of S.tps)if(t.phase==='empty')return t.cap/11.5;
+  return 0;
+}
+
+// ============================================================================
+// CLOCK / DAY HELPERS
+// ============================================================================
+function hod(){return(START_H+S.simHours)%24}
+function dIdx(){return Math.floor((START_H+S.simHours)/24)}
+function dName(i){return DAYS[i%7]}
+function fmtT(){const h=hod(),hi=Math.floor(h),mi=Math.floor((h-hi)*60);return String(hi).padStart(2,'0')+':'+String(mi).padStart(2,'0')}
+function inWin(h){const _eps=1e-6;for(const w of WIN)if(h>=w[0]-_eps&&h<w[1]-_eps)return true;return false}
+function nextWin(h){for(const w of WIN)if(h<w[0])return w[0];return 24+WIN[0][0]}
+function findTp(p){for(const t of S.tps)if(t.phase===p)return t;return null}
+
+// Layout: positions scale to canvas width SW so pumps always fit
+// ============================================================================
+// CANVAS LAYOUT — scales to window width
+// ============================================================================
+function layout(){
+  const usable=Math.max(900,SW);
+  const margin=Math.round(usable*0.06);
+  const baseY=SH-40;
+  const topTanksY=130;
+  const botTanksY=baseY-50;
+  const seaX=margin+30;
+  const culX=usable-margin-50;
+  const innerLeft=seaX+90;
+  const innerRight=culX-90;
+  const innerW=innerRight-innerLeft;
+  const resX=innerLeft+innerW*0.18;
+  const tpX=innerLeft+innerW*0.55;
+  const tp1Top=70,tp1Bot=tp1Top+130;
+  const tp2Top=tp1Bot+85,tp2Bot=tp2Top+130;
+  const inflowX=tpX-65,outflowX=tpX+65;
+  const pumpA={x:(seaX+resX)/2,y:baseY};
+  const pumpB={x:(resX+inflowX)/2-10,y:baseY};
+  const pumpC={x:(outflowX+culX)/2,y:baseY};
+  return{baseY,topTanksY,botTanksY,seaX,resX,tpX,culX,tp1Top,tp1Bot,tp2Top,tp2Bot,inflowX,outflowX,pumpA,pumpB,pumpC};
+}
+function pathA(L){return[{x:L.seaX,y:L.botTanksY},{x:L.seaX,y:L.baseY},{x:L.resX,y:L.baseY},{x:L.resX,y:L.botTanksY}]}
+function pathBto(L,tpIdx){const tpBotY=tpIdx===0?L.tp1Bot:L.tp2Bot;return[{x:L.resX,y:L.botTanksY},{x:L.resX,y:L.baseY},{x:L.inflowX,y:L.baseY},{x:L.inflowX,y:tpBotY},{x:L.tpX-50,y:tpBotY}]}
+function pathCfrom(L,tpIdx){const tpBotY=tpIdx===0?L.tp1Bot:L.tp2Bot;return[{x:L.tpX+50,y:tpBotY},{x:L.outflowX,y:tpBotY},{x:L.outflowX,y:L.baseY},{x:L.culX,y:L.baseY},{x:L.culX,y:L.botTanksY}]}
+function pathExchange(L){return[{x:L.culX,y:L.topTanksY+50},{x:L.culX+55,y:L.topTanksY+50},{x:L.culX+55,y:L.topTanksY+10}]}
+function arcs(pts){const segs=[];let t=0;for(let i=1;i<pts.length;i++){const dx=pts[i].x-pts[i-1].x,dy=pts[i].y-pts[i-1].y,len=Math.hypot(dx,dy);segs.push({a:pts[i-1],b:pts[i],len,start:t});t+=len}return{segs,total:t}}
+function ptAt(a,u){const tg=u*a.total;for(const s of a.segs){if(tg<=s.start+s.len){const l=(tg-s.start)/s.len;return{x:s.a.x+(s.b.x-s.a.x)*l,y:s.a.y+(s.b.y-s.a.y)*l,nx:-(s.b.y-s.a.y)/s.len,ny:(s.b.x-s.a.x)/s.len}}}const last=a.segs[a.segs.length-1].b;return{x:last.x,y:last.y,nx:0,ny:-1}}
+
+
+// ===== Day snapshots for timeline replay =====
+const daySnaps={}; // dayIdx → JSON of S
+function takeSnapshot(){return JSON.stringify(S)}
+function loadSnapshot(j){const o=JSON.parse(j);S=o}
+function snapshotKey(simH){return Math.floor((START_H+simH)/24)}
+function checkSnapshot(){const k=snapshotKey(S.simHours);if(!(k in daySnaps))daySnaps[k]=takeSnapshot()}
+
+function seekToSimHours(target){
+  // Find best snapshot ≤ target
+  const tgtDay=snapshotKey(target);
+  let useKey=null;
+  for(const k in daySnaps){const ki=parseInt(k);if(ki<=tgtDay&&(useKey==null||ki>useKey))useKey=ki}
+  if(useKey!=null){
+    loadSnapshot(daySnaps[useKey]);
+  }else{
+    // Reset to initial
+    S=initialState();seedP(S.partsA,60);seedP(S.partsB,60);seedP(S.partsC,60);seedP(S.partsCex,40);
+    daySnaps[snapshotKey(0)]=takeSnapshot();
+  }
+  // Fast-forward in fine sub-steps (no real-time animation)
+  let safety=200000;
+  while(S.simHours<target&&safety-- >0){
+    const dh=Math.min(0.05,target-S.simHours);
+    advanceSubStep(dh,0); // dtReal=0 — no particle animation, just physics
+    if(snapshotKey(S.simHours)!==snapshotKey(S.simHours-dh))daySnaps[snapshotKey(S.simHours)]=takeSnapshot();
+  }
+}
+
+// One micro-step of simulation physics. dh in sim hours, dtReal in real seconds (for animation speeds).
+// ============================================================================
+// PHYSICS — one substep of fixed sim-time dh
+// ============================================================================
+function advanceSubStep(dh,dtReal){
+  // Use the hod from the START of this substep for window checks, so the last
+  // boundary substep still pumps for its full dh.
+  const startHod=hod();
+  S.simHours+=dh;S.sway+=dtReal||0;
+  const seaFlow=getSeaFlow();
+  // Drain (Pump C) — dynamic rate = TP cap / 11 h
+  let drainTp=findTp('transferring');
+  if(!drainTp){const r=findTp('ready');if(r){r.phase='transferring';drainTp=r}}
+  S.pumpC.source=drainTp;
+  S.pumpC.active=!!(drainTp&&inWin(startHod)&&drainTp.vol>0);
+  if(S.pumpC.active){
+    const rateC=drainTp.cap/PUMP_C_DRAIN_HOURS;
+    const t=Math.min(rateC*dh,drainTp.vol);
+    drainTp.vol-=t;
+    if(S.cul<CP_CAP)S.cul=Math.min(CP_CAP,S.cul+t);
+    S.exchanged+=t;
+    S.exchangedCycle=(S.exchangedCycle||0)+t;
+    S.dailyExchange=(S.dailyExchange||0)+t;
+    if(S.exchangedCycle>=CP_CAP){S.exchangeCycles=(S.exchangeCycles||0)+1;S.exchangedCycle=0}
+  }
+  // Final snap to empty (independent of pump activity) — handles boundary residue
+  if(drainTp&&drainTp.phase==='transferring'&&drainTp.vol<=Math.max(TP_EMPTY_MARGIN*0.25,drainTp.cap*0.00005)){
+    // Capture the residual that was about to be drained so the live transfer-progress
+    // line (and the global S.exchanged) match the volume the TP actually contained.
+    const _residual=drainTp.vol;
+    if(_residual>0){
+      if(S.cul<CP_CAP)S.cul=Math.min(CP_CAP,S.cul+_residual);
+      S.exchanged+=_residual;
+      S.exchangedCycle=(S.exchangedCycle||0)+_residual;
+      S.dailyExchange=(S.dailyExchange||0)+_residual;
+      if(S.exchangedCycle>=CP_CAP){S.exchangeCycles=(S.exchangeCycles||0)+1;S.exchangedCycle=0}
+    }
+    drainTp.vol=0;drainTp.phase='empty';drainTp.phaseElapsed=0;
+    // Snap the live line to the full TP cap — by conservation, the entire TP has been
+    // transferred to CP, so the cyan line should read exactly drainTp.cap m³.
+    if(!S._inForecast){S._liveLineTpId=drainTp.id;S._liveLineValue=drainTp.cap;}
+    if(S.pumpC.source===drainTp)S.pumpC.source=null;
+    S.pumpC.active=false;
+  }
+  // Pump A: independent — runs while reservoir below cap AND within today's duty hours
+  const dayHour=((S.simHours%24)+24)%24; // 0..24 cycling from sim start
+  const pumpAAllowed=dayHour<pumpAMaxHours;
+  S.pumpA.active=pumpAAllowed&&(S.res<RES_CAP-0.5)&&seaFlow>0;
+  if(S.pumpA.active){S.res=Math.min(RES_CAP,S.res+seaFlow*dh)}
+  // Prep (Pump B → chlorinate → settle)
+  if(!S.prep.target||S.prep.stage==='idle'){const e=findTp('empty');if(e){S.prep.target=e;S.prep.stage='filling'}else{S.prep.target=null;S.prep.stage='idle'}}
+  S.pumpB.active=false;S.pumpB.target=null;
+  const tgt=S.prep.target;
+  if(tgt){
+    const tgtCap=tgt.cap;
+    if(S.prep.stage==='filling'){
+      tgt.phase='filling';S.pumpB.target=tgt;
+      if(tgt.vol>=tgtCap-Math.max(TP_FULL_MARGIN,tgtCap*0.0005)){tgt.vol=tgtCap;tgt.phase='chlorinating';tgt.phaseElapsed=0;S.prep.stage='chlorinate';S.pumpB.active=false;S.pumpB.target=null}
+      else if(S.res>0.5){S.pumpB.active=true;const rateB=tgtCap/PUMP_B_FILL_HOURS;const t=Math.min(rateB*dh,S.res,tgtCap-tgt.vol);S.res-=t;tgt.vol+=t}
+      else{S.pumpB.active=false}
+    }
+    if(S.prep.stage==='chlorinate'){tgt.phaseElapsed+=dh;if(tgt.phaseElapsed>=CHLORINATE_HOURS){tgt.phase='settling';S.prep.stage='settle'}}
+    if(S.prep.stage==='settle'){tgt.phaseElapsed+=dh;if(tgt.phaseElapsed>=SETTLE_HOURS){tgt.phase='ready';tgt.phaseElapsed=0;S.prep.stage='idle';S.prep.target=null}}
+  }
+  // Track Pump B + Chlorination + Settling segments for today's timeline (06:00 → 06:00 cycle).
+  // Skip during forecast runs; align the cycle to S.simHours/24 so reset happens at the
+  // same boundary the timeline displays.
+  if(!S._inForecast){
+    const _segCycle=Math.floor(S.simHours/24);
+    const _dayHourB=((S.simHours%24)+24)%24;
+    // Daily exchange counter resets at each 06:00 boundary (same cycle as the timeline)
+    if(S._dailyExchangeCycle!==_segCycle){S.dailyExchange=0;S._dailyExchangeCycle=_segCycle;}
+    // Live transfer-progress line state (pauses when Pump C is idle; resets when a new TP starts pumping)
+    if(S.pumpC.active && S.pumpC.source){
+      if(S._liveLineTpId !== S.pumpC.source.id){
+        S._liveLineTpId = S.pumpC.source.id;
+        S._liveLineValue = 0;
+      }
+      S._liveLineValue = Math.max(0, S.pumpC.source.cap - S.pumpC.source.vol);
+    }
+    if(!S.pumpBSegments)S.pumpBSegments=[];
+    if(!S.chlorSegments)S.chlorSegments=[];
+    if(!S.settleSegments)S.settleSegments=[];
+    if(!S._lastPhase)S._lastPhase={};
+    if(S.pumpBDay!==_segCycle){
+      // New cycle — reset all event lists; re-open segments for anything currently active
+      S.pumpBSegments=[];S.chlorSegments=[];S.settleSegments=[];S.pumpBDay=_segCycle;S.eventCycle=_segCycle;
+      if(S.pumpB.active)S.pumpBSegments.push({start:_dayHourB,end:null});
+      for(const _tp of S.tps){
+        if(_tp.phase==='chlorinating')S.chlorSegments.push({tp:_tp.id,start:_dayHourB,end:null});
+        if(_tp.phase==='settling')S.settleSegments.push({tp:_tp.id,start:_dayHourB,end:null});
+      }
+    }
+    // Pump B
+    const _lastSeg=S.pumpBSegments[S.pumpBSegments.length-1];
+    if(S.pumpB.active){
+      if(!_lastSeg||_lastSeg.end!==null)S.pumpBSegments.push({start:_dayHourB,end:null});
+    }else{
+      if(_lastSeg&&_lastSeg.end===null)_lastSeg.end=_dayHourB;
+    }
+    // TP phase transitions → chlor/settle segments
+    for(const _tp of S.tps){
+      const _prev=S._lastPhase[_tp.id], _cur=_tp.phase;
+      if(_prev!==_cur){
+        if(_prev==='chlorinating'){
+          for(let j=S.chlorSegments.length-1;j>=0;j--){if(S.chlorSegments[j].tp===_tp.id&&S.chlorSegments[j].end===null){S.chlorSegments[j].end=_dayHourB;break}}
+        } else if(_prev==='settling'){
+          for(let j=S.settleSegments.length-1;j>=0;j--){if(S.settleSegments[j].tp===_tp.id&&S.settleSegments[j].end===null){S.settleSegments[j].end=_dayHourB;break}}
+        }
+        if(_cur==='chlorinating')S.chlorSegments.push({tp:_tp.id,start:_dayHourB,end:null});
+        else if(_cur==='settling')S.settleSegments.push({tp:_tp.id,start:_dayHourB,end:null});
+        S._lastPhase[_tp.id]=_cur;
+      }
+    }
+  }
+  // Visual particles + tank micro-effects (driven by real time)
+  const dt=dtReal||0;
+  function adv(parts,sf){const realRate=Math.min(8,Math.max(.3,HPS));for(const p of parts){p.u+=(.05+sf*.75)*dt*realRate;if(p.u>1){p.u-=1;p.jitter=(Math.random()-.5)*3}}}
+  if(dt>0){
+    if(S.pumpA.active)adv(S.partsA,Math.min(1,seaFlow/460));
+    if(S.pumpB.active)adv(S.partsB,Math.min(1,getPumpBRate()/460));
+    if(S.pumpC.active){const rC=S.pumpC.source?S.pumpC.source.cap/11:0;adv(S.partsC,Math.min(1,rC/460))}
+    for(const tp of S.tps){
+      if(tp.phase==='chlorinating'&&Math.random()<.5)tp.bubbles.push({x:Math.random(),y:.95,vy:.18+Math.random()*.18,r:1+Math.random()*1.6,a:.65});
+      for(const b of tp.bubbles){b.y-=b.vy*dt;b.a-=dt*.25}
+      tp.bubbles=tp.bubbles.filter(b=>b.y>0&&b.a>0);
+    }
+    // CP bubbles (fresh water arriving) and exchange-pipe sludge (dirty water leaving)
+    if(!S.cpBubbles)S.cpBubbles=[];
+    if(!S.sludge)S.sludge=[];
+    if(S.pumpC.active){
+      if(Math.random()<.55)S.cpBubbles.push({x:.05+Math.random()*.45,y:.95,vy:.18+Math.random()*.18,r:1.4+Math.random()*1.8,a:.75});
+      if(Math.random()<.4)S.sludge.push({u:0,jitter:(Math.random()-.5)*3,size:2.2+Math.random()*1.8,a:.7+Math.random()*.25,wob:Math.random()*Math.PI*2});
+    }
+    for(const b of S.cpBubbles){b.y-=b.vy*dt;b.a-=dt*.22}
+    S.cpBubbles=S.cpBubbles.filter(b=>b.y>0&&b.a>0);
+    const _sludgeSpeed=Math.min(8,Math.max(.3,HPS));
+    for(const p of S.sludge){p.u+=0.55*dt*_sludgeSpeed;p.wob+=dt*3}
+    S.sludge=S.sludge.filter(p=>p.u<=1);
+    for(const tp of S.tps){
+      if(tp.phase==='settling'||tp.phase==='chlorinating'){
+        if(tp.phase==='chlorinating'&&tp.phaseElapsed<0.02){for(const p of tp.sediment){p.y=Math.random()*.55;p.vy=0;p.settled=false}}
+        for(const p of tp.sediment){if(p.settled)continue;p.vy+=.02*dt;p.y+=p.vy*dt;if(p.y>=.92){p.y=.92;p.settled=true;p.vy=0}}
+      }
+    }
+    const spinScale=Math.min(4,Math.max(.5,HPS));
+    if(S.pumpA.active)S.pumpA.angle+=dt*16*spinScale;
+    if(S.pumpB.active)S.pumpB.angle+=dt*16*spinScale;
+    if(S.pumpC.active)S.pumpC.angle+=dt*16*spinScale;
+  }
+}
+
+// Fixed-timestep physics — guarantees identical simulation results across all playback
+// speeds. Each substep advances exactly FIXED_DH sim hours; leftover time accumulates
+// for the next frame. 0.01 sim hour = 36 sim seconds — fine enough that window-boundary
+// errors are well under 1 m³, while still cheap at 100× playback.
+const FIXED_DH=0.01;
+let _stepAcc=0;
+// ============================================================================
+// MAIN STEP — fixed-timestep accumulator drives substeps deterministically
+// ============================================================================
+function step(dt){
+  _stepAcc+=dt*HPS;
+  if(_stepAcc>120)_stepAcc=120; // cap after long real-time pauses to avoid runaway
+  const numSteps=Math.floor(_stepAcc/FIXED_DH);
+  const dtPerStep=numSteps>0?(dt/numSteps):0;
+  for(let i=0;i<numSteps;i++){
+    advanceSubStep(FIXED_DH,dtPerStep);
+    _stepAcc-=FIXED_DH;
+    // Failure check — increments deterministically by FIXED_DH per substep
+    if(S.prep.target&&S.prep.stage==='filling'&&S.res<RES_EMPTY_THRESHOLD&&S.prep.target.vol<S.prep.target.cap-5){
+      failTimer+=FIXED_DH;
+      if(failTimer>=FAIL_GRACE_HOURS&&!systemFailed){
+        systemFailed=true;
+        failureReason='Reservoir ran dry while Pump B was filling TP'+S.prep.target.id+'. Increase Pump A duty or sea-pump rate.';
+        playing=false;refreshPlayBtn();
+        break;
+      }
+    }else{failTimer=0}
+  }
+  checkSnapshot();
+}
+
+// ============================================================================
+// CANVAS DRAWING PRIMITIVES
+// ============================================================================
+function rr(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+function drawBg(ctx){ctx.save();ctx.strokeStyle='rgba(255,255,255,.03)';ctx.lineWidth=1;for(let x=0;x<SW;x+=40){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,SH);ctx.stroke()}for(let y=0;y<SH;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(SW,y);ctx.stroke()}ctx.restore()}
+function drawDN(ctx){const h=hod(),isDay=h>=6&&h<18,x=SW-30,y=22;ctx.save();
+if(isDay){ctx.fillStyle='rgba(251,191,36,.85)';ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fill();ctx.strokeStyle='rgba(251,191,36,.45)';ctx.lineWidth=1.3;for(let i=0;i<8;i++){const a=i*Math.PI/4;ctx.beginPath();ctx.moveTo(x+Math.cos(a)*12,y+Math.sin(a)*12);ctx.lineTo(x+Math.cos(a)*15,y+Math.sin(a)*15);ctx.stroke()}}
+else{ctx.fillStyle='rgba(203,213,225,.85)';ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fill();ctx.fillStyle='#0d1a36';ctx.beginPath();ctx.arc(x+3,y-2,7.5,0,Math.PI*2);ctx.fill()}ctx.restore()}
+function drawSea(ctx,x,topY,botY,w){const h=botY-topY;ctx.save();
+ctx.fillStyle='rgba(20,40,72,.5)';rr(ctx,x-w/2,topY,w,h,6);ctx.fill();
+const g=ctx.createLinearGradient(0,topY,0,botY);g.addColorStop(0,'#2076b3');g.addColorStop(1,'#083855');ctx.fillStyle=g;ctx.fillRect(x-w/2+2,topY+8,w-4,h-10);
+ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1.2;ctx.beginPath();
+for(let i=0;i<=14;i++){const px=x-w/2+2+(i*(w-4)/14),py=topY+8+Math.sin(S.sway*2.4+i*.7)*2.4;if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py)}ctx.stroke();
+ctx.fillStyle='#a8c2e6';ctx.font='12px system-ui,sans-serif';ctx.textAlign='center';ctx.fillText('Sea',x,topY-8);ctx.restore()}
+
+// Pretty centred percentage with a progress ring and optional subtitle.
+// pct: 0-100, sub: optional small text below, accent: hex ring color.
+function drawPctLabel(ctx,x,topY,botY,pct,sub,accent){
+  ctx.save();
+  const cy=(topY+botY)/2;
+  const ringR=22, lw=3.5;
+  // Soft dark backdrop disc for legibility against any water color
+  const grad=ctx.createRadialGradient(x,cy,2,x,cy,ringR+4);
+  grad.addColorStop(0,'rgba(7,16,31,.7)');
+  grad.addColorStop(1,'rgba(7,16,31,.15)');
+  ctx.fillStyle=grad;
+  ctx.beginPath();ctx.arc(x,cy,ringR+5,0,Math.PI*2);ctx.fill();
+  // Background track ring
+  ctx.lineWidth=lw;
+  ctx.strokeStyle='rgba(255,255,255,.15)';
+  ctx.beginPath();ctx.arc(x,cy,ringR,0,Math.PI*2);ctx.stroke();
+  // Progress arc
+  const p=Math.max(0,Math.min(100,pct))/100;
+  if(p>0.001){
+    ctx.lineCap='round';
+    ctx.strokeStyle=accent||'#4cc2ff';
+    ctx.beginPath();
+    ctx.arc(x,cy,ringR,-Math.PI/2,-Math.PI/2+p*Math.PI*2);
+    ctx.stroke();
+    ctx.lineCap='butt';
+  }
+  // Percentage text — bold, white, centred
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.font='700 14px system-ui,sans-serif';
+  ctx.fillStyle='#ffffff';
+  const txt=Math.round(pct)+'%';
+  ctx.fillText(txt,x,sub?cy-4:cy);
+  // Subtitle (cycle count for CP)
+  if(sub){
+    ctx.font='600 9px system-ui,sans-serif';
+    ctx.fillStyle='rgba(220,235,255,.85)';
+    ctx.fillText(sub,x,cy+10);
+  }
+  ctx.restore();
+}
+function drawTank(ctx,x,topY,botY,w,fill,cap,col,label,opts){opts=opts||{};const h=botY-topY;ctx.save();
+ctx.fillStyle='#0f1a32';ctx.strokeStyle='#3a4a72';ctx.lineWidth=2;rr(ctx,x-w/2,topY,w,h,10);ctx.fill();ctx.stroke();
+const level=Math.max(0,Math.min(1,fill/cap)),wh=(h-6)*level,wy=botY-wh-3;
+if(wh>0){const g=ctx.createLinearGradient(0,wy,0,botY);g.addColorStop(0,col.top);g.addColorStop(1,col.bot);ctx.fillStyle=g;ctx.fillRect(x-w/2+3,wy,w-6,wh)}
+if(level>.02){ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=1;ctx.beginPath();for(let i=0;i<=12;i++){const px=x-w/2+3+(i*(w-6)/12),py=wy+Math.sin(S.sway*(opts.calm?.7:2)+i*.7)*(opts.calm?.6:1.5);if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py)}ctx.stroke()}
+ctx.fillStyle='#cdd9ee';ctx.font='12px system-ui,sans-serif';ctx.textAlign='center';ctx.fillText(fmt(Math.round(fill))+' m³',x,botY+16);
+if(opts.showCap){ctx.fillStyle='#6b7e9c';ctx.font='10px system-ui,sans-serif';ctx.fillText('/ '+fmt(Math.round(cap))+' m³',x,botY+30)}
+ctx.fillStyle='#8aa0c2';ctx.font='11px system-ui,sans-serif';ctx.fillText(label,x,topY-8);
+if(opts.tp){const tp=opts.tp;const isChl=tp.phase==='chlorinating',isSet=tp.phase==='settling';
+  if(isChl&&level>.02){ctx.fillStyle='rgba(220,255,220,.18)';ctx.fillRect(x-w/2+3,wy,w-6,wh)}
+  if((isSet||isChl)&&level>.05){const px0=x-w/2+3,pw=w-6;for(const p of tp.sediment){ctx.beginPath();ctx.arc(px0+p.x*pw,wy+p.y*wh,p.r,0,Math.PI*2);ctx.fillStyle='rgba(180,200,215,'+p.alpha+')';ctx.fill()}}
+  if(isChl&&level>.05){const px0=x-w/2+3,pw=w-6;for(const b of tp.bubbles){ctx.beginPath();ctx.arc(px0+b.x*pw,wy+b.y*wh,b.r,0,Math.PI*2);ctx.fillStyle='rgba(251,191,36,'+b.a+')';ctx.fill()}}
+  ctx.fillStyle='rgba(255,255,255,.7)';ctx.font='10px system-ui,sans-serif';ctx.textAlign='center';ctx.fillText(PHASE_LABEL[tpStatus(tp)]||'',x,topY+14);
+}
+if(opts.fish&&level>.1){const px0=x-w/2+6,pw=w-12;ctx.fillStyle='rgba(255,255,255,.4)';for(let i=0;i<6;i++){const fx=px0+((Math.sin(S.sway*.6+i*1.3)*.5+.5))*pw,fy=wy+15+((i*7)%Math.max(2,wh-20));ctx.beginPath();ctx.ellipse(fx,fy,3.5,1.6,Math.sin(S.sway+i),0,Math.PI*2);ctx.fill()}}
+if(opts.cpExchange){
+  // ---- Required-water reference line (feed × m³/kg) — drawn over green water ----
+  const _fp25=parseNum(document.getElementById('feedPer2500').value)||235;
+  const _wpk=parseNum(document.getElementById('waterPerKg').value)||3;
+  const _cpAreaCur=parseNum(document.getElementById('cpArea').value)||119879;
+  const _reqWater=Math.max(0,(_fp25/2500)*_cpAreaCur*_wpk);
+  const _reqFrac=Math.min(1,_reqWater>0?_reqWater/cap:0);
+  const _ix0=x-w/2+3, _iw=w-6, _ih=botY-topY-6;
+  if(_reqFrac>0){
+    const _ly=botY-3-(_reqFrac*_ih);
+    ctx.save();
+    ctx.strokeStyle='rgba(251,191,36,.95)';
+    ctx.lineWidth=1.5;
+    ctx.setLineDash([6,3]);
+    ctx.beginPath();ctx.moveTo(_ix0,_ly);ctx.lineTo(_ix0+_iw,_ly);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowColor='rgba(251,191,36,.7)';ctx.shadowBlur=4;
+    ctx.beginPath();ctx.moveTo(_ix0,_ly);ctx.lineTo(_ix0+_iw,_ly);ctx.stroke();
+    ctx.shadowBlur=0;
+    ctx.fillStyle='#fde68a';ctx.font='bold 9px system-ui,sans-serif';ctx.textAlign='center';
+    ctx.fillText('Req '+fmt(Math.round(_reqWater))+' m³/day',x,_ly-3);
+    ctx.restore();
+  }
+  // ---- Live transfer-progress line ----
+  // Cyan dashed line that climbs from the bottom of CP as Pump C drains the current TP.
+  // Pauses at its position when Pump C stops; resets to the bottom only when a new TP
+  // begins actively pumping (S._liveLineTpId change is handled in advanceSubStep).
+  const _liveVal=Math.max(0,S._liveLineValue||0);
+  const _liveFrac=Math.min(1,_liveVal/cap);
+  if(_liveFrac>0.0005){
+    const _lvY=botY-3-(_liveFrac*_ih);
+    ctx.save();
+    ctx.strokeStyle='rgba(76,194,255,.95)';
+    ctx.lineWidth=1.5;
+    ctx.setLineDash([4,3]);
+    ctx.beginPath();ctx.moveTo(_ix0,_lvY);ctx.lineTo(_ix0+_iw,_lvY);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.shadowColor='rgba(76,194,255,.75)';ctx.shadowBlur=4;
+    ctx.beginPath();ctx.moveTo(_ix0,_lvY);ctx.lineTo(_ix0+_iw,_lvY);ctx.stroke();
+    ctx.shadowBlur=0;
+    // Label on the right edge so it doesn't overlap the amber Req label
+    ctx.fillStyle='#bae6fd';ctx.font='bold 8px system-ui,sans-serif';ctx.textAlign='right';
+    ctx.fillText('+'+fmt(Math.round(_liveVal))+' m³',_ix0+_iw-3,_lvY-3);
+    ctx.restore();
+  }
+  // Fresh-water bubbles rising in CP when Pump C is delivering water
+  if(S.cpBubbles&&S.cpBubbles.length&&level>.05){
+    const px0=x-w/2+3,pw=w-6;
+    for(const b of S.cpBubbles){
+      ctx.beginPath();ctx.arc(px0+b.x*pw,wy+b.y*wh,b.r,0,Math.PI*2);
+      ctx.fillStyle='rgba(76,194,255,'+b.a+')';ctx.fill();
+      ctx.strokeStyle='rgba(173,216,255,'+(b.a*.7)+')';ctx.lineWidth=.6;ctx.stroke();
+    }
+  }
+  ctx.fillStyle='rgba(255,255,255,.55)';ctx.font='10px system-ui,sans-serif';ctx.textAlign='center';ctx.fillText(S.pumpC.active?'RECEIVING':((S.exchanged||0)>0?'EXCHANGING':'OPERATING'),x,topY+14);
+  // Exchange % + cycle counter in the middle of CP (original)
+  const cyclePct=Math.round(((S.exchangedCycle||0)/cap)*100);
+  const cycles=S.exchangeCycles||0;
+  drawPctLabel(ctx,x,topY,botY,cyclePct,cycles+' cycle'+(cycles===1?'':'s'),'#34d399');
+}else if(opts.showPct){
+  // Fill % in middle of Reservoir/TP1/TP2
+  const pct=(fill/cap)*100;
+  drawPctLabel(ctx,x,topY,botY,pct,null,opts.pctColor||'#4cc2ff');
+}
+ctx.restore()}
+function drawPipeSegs(ctx,segs){ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#3a4a72';ctx.lineWidth=14;for(const s of segs){ctx.beginPath();ctx.moveTo(s[0],s[1]);ctx.lineTo(s[2],s[3]);ctx.stroke()}
+ctx.strokeStyle='#2a3654';ctx.lineWidth=10;for(const s of segs){ctx.beginPath();ctx.moveTo(s[0],s[1]);ctx.lineTo(s[2],s[3]);ctx.stroke()}}
+function drawWater(ctx,pts,parts,color){color=color||'rgba(56,189,248,';const a=arcs(pts);for(const p of parts){const pt=ptAt(a,p.u),ox=pt.nx*p.jitter*.45,oy=pt.ny*p.jitter*.45;ctx.beginPath();ctx.arc(pt.x+ox,pt.y+oy,p.size,0,Math.PI*2);ctx.fillStyle=color+p.a+')';ctx.fill()}}
+function drawSludge(ctx,pts,parts){const a=arcs(pts);for(const p of parts){const pt=ptAt(a,p.u);const ox=pt.nx*(p.jitter+Math.sin(p.wob||0)*1.5)*.5,oy=pt.ny*(p.jitter+Math.cos(p.wob||0)*1.5)*.5;
+  // Lumpy sludge particle — darker brown core with a faint olive halo
+  ctx.beginPath();ctx.arc(pt.x+ox,pt.y+oy,p.size+1.5,0,Math.PI*2);ctx.fillStyle='rgba(120,100,60,'+(p.a*.35)+')';ctx.fill();
+  ctx.beginPath();ctx.arc(pt.x+ox,pt.y+oy,p.size,0,Math.PI*2);ctx.fillStyle='rgba(94,72,38,'+p.a+')';ctx.fill();
+  ctx.beginPath();ctx.arc(pt.x+ox-p.size*.25,pt.y+oy-p.size*.25,p.size*.4,0,Math.PI*2);ctx.fillStyle='rgba(160,138,90,'+(p.a*.5)+')';ctx.fill();
+}}
+const PUMP_COLORS={
+  A:{body:'#ef4444',halo:'rgba(239,68,68,.45)',label:'#fecaca',status:'#fee2e2',water:'rgba(239,68,68,'},
+  B:{body:'#fbbf24',halo:'rgba(251,191,36,.4)',label:'#fde7b0',status:'#fef3c7',water:'rgba(251,191,36,'},
+  C:{body:'#34d399',halo:'rgba(110,231,183,.4)',label:'#bbf7d0',status:'#a7f3d0',water:'rgba(110,231,183,'}
+};
+function drawPump(ctx,x,y,active,ang,letter,extra){
+  const C=PUMP_COLORS[letter]||PUMP_COLORS.A;
+  ctx.save();ctx.translate(x,y);
+  // Decorative mount (below impeller)
+  ctx.fillStyle='#1d2945';rr(ctx,-30,18,60,9,3);ctx.fill();
+  // Volute body
+  const g=ctx.createRadialGradient(0,0,4,0,0,28);g.addColorStop(0,'#2a3a64');g.addColorStop(1,'#16213c');ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,24,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=active?C.body:'#3a4a72';ctx.lineWidth=2;ctx.stroke();
+  // Impeller blades (rotating)
+  ctx.save();ctx.rotate(ang);ctx.fillStyle=active?'#e2e8f0':'#8aa0c2';ctx.strokeStyle=active?'#94a3b8':'#5a6a8a';ctx.lineWidth=1.2;
+  for(let i=0;i<6;i++){ctx.save();ctx.rotate((Math.PI*2*i)/6);ctx.beginPath();ctx.moveTo(0,0);ctx.quadraticCurveTo(9,-4,15,0);ctx.quadraticCurveTo(10,4,0,0);ctx.fill();ctx.stroke();ctx.restore()}
+  ctx.beginPath();ctx.arc(0,0,4,0,Math.PI*2);ctx.fillStyle=active?'#e2e8f0':'#94a3b8';ctx.fill();ctx.restore();
+  if(active){ctx.beginPath();ctx.arc(0,0,30,0,Math.PI*2);ctx.strokeStyle=C.halo;ctx.lineWidth=1.5;ctx.stroke()}
+  // All labels ABOVE the impeller
+  if(extra){ctx.fillStyle='#8aa0c2';ctx.font='9px system-ui,sans-serif';ctx.textAlign='center';ctx.fillText(extra,0,-54)}
+  ctx.fillStyle=active?C.label:'#8aa0c2';ctx.font='bold 11px system-ui,sans-serif';ctx.textAlign='center';
+  ctx.fillText('Pump '+letter,0,-40);
+  ctx.fillStyle=active?C.status:'#5a6a8a';ctx.font='9px system-ui,sans-serif';
+  ctx.fillText(active?'ACTIVE':'IDLE',0,-28);
+  ctx.restore();
+}
+function drawArrow(ctx,x,y,lbl,active){ctx.save();ctx.fillStyle=active?'rgba(110,231,183,.95)':'rgba(140,160,200,.4)';ctx.font='11px system-ui,sans-serif';ctx.textAlign='center';ctx.fillText(lbl,x,y);ctx.restore()}
+
+// ============================================================================
+// MAIN CANVAS DRAW
+// ============================================================================
+function draw(){if(!sctx)return;sctx.clearRect(0,0,SW,SH);drawBg(sctx);
+const L=layout(),tankW=70,tpW=82;
+const segs=[
+  [L.seaX,L.botTanksY,L.seaX,L.baseY],[L.seaX,L.baseY,L.resX,L.baseY],[L.resX,L.baseY,L.resX,L.botTanksY],
+  [L.resX,L.baseY,L.inflowX,L.baseY],[L.inflowX,L.baseY,L.inflowX,L.tp1Bot],
+  [L.inflowX,L.tp2Bot,L.tpX-50,L.tp2Bot],[L.inflowX,L.tp1Bot,L.tpX-50,L.tp1Bot],
+  [L.tpX+50,L.tp1Bot,L.outflowX,L.tp1Bot],[L.tpX+50,L.tp2Bot,L.outflowX,L.tp2Bot],
+  [L.outflowX,L.tp1Bot,L.outflowX,L.baseY],[L.outflowX,L.baseY,L.culX,L.baseY],[L.culX,L.baseY,L.culX,L.botTanksY],
+  [L.culX,L.topTanksY+50,L.culX+55,L.topTanksY+50],[L.culX+55,L.topTanksY+50,L.culX+55,L.topTanksY+10],
+];
+drawPipeSegs(sctx,segs);
+drawSea(sctx,L.seaX,L.topTanksY,L.botTanksY,tankW);
+drawTank(sctx,L.resX,L.topTanksY,L.botTanksY,tankW,S.res,RES_CAP,{top:'#1ea6dd',bot:'#0e5d8a'},'Reservoir',{showCap:true,showPct:true,pctColor:'#4cc2ff'});
+drawTank(sctx,L.tpX,L.tp1Top,L.tp1Bot,tpW,S.tps[0].vol,S.tps[0].cap,{top:'#22d3ee',bot:'#0891b2'},'Treatment Pond 1',{tp:S.tps[0],calm:S.tps[0].phase==='settling'||S.tps[0].phase==='ready',showCap:true,showPct:true,pctColor:'#22d3ee'});
+drawTank(sctx,L.tpX,L.tp2Top,L.tp2Bot,tpW,S.tps[1].vol,S.tps[1].cap,{top:'#22d3ee',bot:'#0891b2'},'Treatment Pond 2',{tp:S.tps[1],calm:S.tps[1].phase==='settling'||S.tps[1].phase==='ready',showCap:true,showPct:true,pctColor:'#22d3ee'});
+drawTank(sctx,L.culX,L.topTanksY,L.botTanksY,tankW,S.cul,CP_CAP,{top:'#34d399',bot:'#059669'},'Cultivation Pond',{fish:true,showCap:true,cpExchange:true});
+sctx.save();sctx.fillStyle='#8aa0c2';sctx.font='10px system-ui,sans-serif';sctx.textAlign='center';sctx.fillText('Exchange',L.culX+55,L.topTanksY+2);sctx.restore();
+if(S.pumpA.active)drawWater(sctx,pathA(L),S.partsA,PUMP_COLORS.A.water);
+if(S.pumpB.active&&S.pumpB.target){const idx=S.tps.indexOf(S.pumpB.target);drawWater(sctx,pathBto(L,idx),S.partsB,PUMP_COLORS.B.water)}
+if(S.pumpC.active&&S.pumpC.source){const idx=S.tps.indexOf(S.pumpC.source);drawWater(sctx,pathCfrom(L,idx),S.partsC,PUMP_COLORS.C.water);drawSludge(sctx,pathExchange(L),S.sludge)}
+const seaFlow=getSeaFlow(),seaCount=getSeaActiveCount();
+drawPump(sctx,L.pumpA.x,L.pumpA.y,S.pumpA.active,S.pumpA.angle,'A '+seaCount+'/'+seaPumpCount,seaCount?fmt(Math.round(seaFlow))+' m³/h':'All Off');
+drawPump(sctx,L.pumpB.x,L.pumpB.y,S.pumpB.active,S.pumpB.angle,'B',fmt(Math.round(getPumpBRate()))+' m³/h');
+drawPump(sctx,L.pumpC.x,L.pumpC.y,S.pumpC.active,S.pumpC.angle,'C',fmt(Math.round(getPumpCRate()))+' m³/h');
+
+
+
+}
+
+// ============================================================================
+// TIMELINE STRIP (Pump C windows)
+// ============================================================================
+const stripEl=document.getElementById('strip');
+(function buildStrip(){stripEl.innerHTML='';
+for(let h=0;h<=24;h++){
+  const t=document.createElement('div');t.className='tick';
+  if(h%6===0)t.classList.add('major');
+  else if(h%3===0)t.classList.add('mid');
+  t.style.left=((h/24)*100)+'%';stripEl.appendChild(t);
+  // Label every hour from 00:00 to 24:00
+  const l=document.createElement('div');l.className='lbl';
+  if(h%6===0)l.classList.add('major');
+  l.style.left=((h/24)*100)+'%';
+  l.textContent=String(h).padStart(2,'0')+':00';
+  stripEl.appendChild(l);
+}
+for(const w of WIN){const wn=document.createElement('div');wn.className='win';wn.style.left=((w[0]/24)*100)+'%';wn.style.width=(((w[1]-w[0])/24)*100)+'%';stripEl.appendChild(wn)}
+const nw=document.createElement('div');nw.className='now';nw.id='nowMarker';stripEl.appendChild(nw)})();
+const nowMarker=document.getElementById('nowMarker');
+
+// Timeline is display-only (no scrubbing).
+
+const els={
+  dayLabel:document.getElementById('dayLabel'),timeLabel:document.getElementById('timeLabel'),
+  exch:document.getElementById('v-exch'),cycles:document.getElementById('v-cycles'),
+  winStatus:document.getElementById('windowStatus'),
+  cardRes:document.getElementById('card-res'),cardTp1:document.getElementById('card-tp1'),
+  cardTp2:document.getElementById('card-tp2'),cardCp:document.getElementById('card-cp'),
+  resPhase:document.getElementById('res-phase'),tp1Phase:document.getElementById('tp1-phase'),
+  tp2Phase:document.getElementById('tp2-phase'),cpPhase:document.getElementById('cp-phase'),
+  resDesc:document.getElementById('res-desc'),tp1Desc:document.getElementById('tp1-desc'),
+  tp2Desc:document.getElementById('tp2-desc'),cpDesc:document.getElementById('cp-desc'),
+  resVol:document.getElementById('res-vol'),tp1Vol:document.getElementById('tp1-vol'),
+  tp2Vol:document.getElementById('tp2-vol'),cpVol:document.getElementById('cp-vol'),
+  pcA:document.getElementById('pc-A'),pcB:document.getElementById('pc-B'),pcC:document.getElementById('pc-C'),
+  pcAst:document.getElementById('pc-A-st'),pcBst:document.getElementById('pc-B-st'),pcCst:document.getElementById('pc-C-st'),
+  scenePill:document.getElementById('scenePill'),pmpChipA:document.getElementById('pmpChipA'),pmpChipB:document.getElementById('pmpChipB'),pmpChipC:document.getElementById('pmpChipC'),pmpAText:document.getElementById('pmpAText'),pmpBText:document.getElementById('pmpBText'),pmpCText:document.getElementById('pmpCText'),healthBox:document.getElementById('healthBox'),healthIcon:document.getElementById('healthIcon'),healthText:document.getElementById('healthText'),healthBullets:document.getElementById('healthBullets'),feedPer2500:document.getElementById('feedPer2500'),waterPerKg:document.getElementById('waterPerKg'),feedTotal:document.getElementById('feedTotal'),waterRequired:document.getElementById('waterRequired'),pumpDelivery:document.getElementById('pumpDelivery'),achievableRatio:document.getElementById('achievableRatio'),complArc:document.getElementById('complArc'),complNeedle:document.getElementById('complNeedle'),complValue:document.getElementById('complValue')
+};
+
+// ============================================================================
+// DOM UPDATE — pond cards, pump chips, system readings, health box
+// ============================================================================
+function descForTp(tp){
+  if(tp.phase==='filling')return 'Receiving from Reservoir';
+  if(tp.phase==='chlorinating')return 'Chlorinating — '+tp.phaseElapsed.toFixed(2)+' / 0.5 h';
+  if(tp.phase==='settling')return 'Settling — '+tp.phaseElapsed.toFixed(1)+' / 12.0 h';
+  if(tp.phase==='ready')return 'Ready to Transfer';
+  if(tp.phase==='transferring'){
+    if(S.pumpC.active && S.pumpC.source===tp) return 'Transferring to Cultivation Pond';
+    return 'Ready — Waiting for Next Window';
+  }
+  return 'Empty — Awaiting Refill';
+}
+function descForRes(){
+  if(S.pumpA.active)return 'Filling from Sea';
+  if(S.pumpB.active)return 'Transferring to TP'+(S.pumpB.target?S.pumpB.target.id:'');
+  if(S.res<=0.5)return 'Empty — Awaiting Sea Pumps';
+  return 'Holding — Reservoir Buffer';
+}
+function phaseForRes(){
+  if(S.pumpA.active)return 'filling';
+  if(S.pumpB.active)return 'transferring';
+  if(S.res<=0.5)return 'empty';
+  return 'idle';
+}
+function descForCp(){
+  if(S.pumpC.active)return 'Receiving Fresh Water · Exchange in Progress';
+  if(S.exchanged>0)return 'Operating Level — '+fmt(Math.round(S.exchanged))+' m³ Exchanged';
+  return 'Operating Level — Standby';
+}
+function phaseForCp(){
+  if(S.pumpC.active)return 'receiving';
+  if(S.exchanged>0)return 'exchanging';
+  return 'standby';
+}
+function setCard(card,phaseEl,descEl,volEl,phase,desc,vol){
+  card.classList.remove('empty','filling','chlorinating','settling','ready','transferring','idle','receiving','exchanging','standby');
+  card.classList.add(phase);
+  phaseEl.textContent=PHASE_LABEL[phase]||phase.toUpperCase();
+  descEl.textContent=desc;
+  volEl.textContent=fmt(Math.round(vol));
+}
+function updateDOM(){
+  const di=dIdx();
+  els.dayLabel.textContent=dName(di)+' · Day '+(di+1);
+  els.timeLabel.textContent=fmtT();
+  els.exch.textContent=fmt(Math.round(S.exchanged));
+  els.cycles.textContent=fmt(S.exchangeCycles||0);
+  // Refresh pump timeline bars
+  updatePumpTimelines();
+  // Scene header pill + sun/moon
+  els.scenePill.textContent=playing?'▶ Running':'⏸ Paused';
+  els.scenePill.classList.toggle('paused',!playing);
+  const _h=hod(),_isDay=_h>=6&&_h<18;
+  const _sm=document.getElementById('sunMoon');
+  if(_sm){_sm.classList.toggle('day',_isDay);_sm.classList.toggle('night',!_isDay)}
+  // Dynamic legend — light up only what's active right now
+  const _anyFlow=S.pumpA.active||S.pumpB.active||S.pumpC.active;
+  const _anyChlor=S.tps.some(function(t){return t.phase==='chlorinating'});
+  const _anySettle=S.tps.some(function(t){return t.phase==='settling'});
+  const _anyIdle=!S.pumpA.active||!S.pumpB.active||!S.pumpC.active;
+  function _legend(id,on){const el=document.getElementById(id);if(el)el.classList.toggle('active',!!on)}
+  _legend('lgFlow',_anyFlow);
+  _legend('lgExch',S.pumpC.active);
+  _legend('lgChlor',_anyChlor);
+  _legend('lgSed',_anySettle);
+  _legend('lgBubble',S.pumpC.active);
+  _legend('lgPumpAct',_anyFlow);
+  _legend('lgPumpIdle',_anyIdle);
+  // Merged pump chips (active state + countdown text in one)
+  function setChip(chip,txtEl,txt,state){txtEl.textContent=txt;chip.classList.remove('active','standby');if(state)chip.classList.add(state)}
+  // Pump A
+  if(!playing){setChip(els.pmpChipA,els.pmpAText,'paused',null)}
+  else if(S.pumpA.active){const sf=getSeaFlow();
+    if(sf>0){
+      const dh2=((S.simHours%24)+24)%24;
+      const restIn=(pumpAMaxHours<24)?(pumpAMaxHours-dh2):Infinity;
+      const fillIn=(RES_CAP-S.res)/sf;
+      let _msg;
+      if(restIn<fillIn) _msg='active · '+restIn.toFixed(1)+' h until rest';
+      else _msg='active · reservoir full in '+fillIn.toFixed(1)+' h';
+      setChip(els.pmpChipA,els.pmpAText,_msg,'active');
+    } else setChip(els.pmpChipA,els.pmpAText,'sea pumps off','standby');
+  }
+  else{const dayHour=((S.simHours%24)+24)%24;
+    if(pumpAMaxHours<24&&dayHour>=pumpAMaxHours)setChip(els.pmpChipA,els.pmpAText,'rest · resumes in '+(24-dayHour).toFixed(1)+' h','standby');
+    else if(S.res>=RES_CAP-0.5)setChip(els.pmpChipA,els.pmpAText,'reservoir full',null);
+    else if(getSeaFlow()<=0)setChip(els.pmpChipA,els.pmpAText,'sea pumps off','standby');
+    else setChip(els.pmpChipA,els.pmpAText,'idle',null);}
+  // Pump B
+  if(!playing){setChip(els.pmpChipB,els.pmpBText,'paused',null)}
+  else if(S.pumpB.active&&S.pumpB.target){const t=S.pumpB.target;setChip(els.pmpChipB,els.pmpBText,'active · done in '+((t.cap-t.vol)/(t.cap/11.5)).toFixed(1)+' h','active')}
+  else if(S.prep.target){const t=S.prep.target;
+    if(S.prep.stage==='filling'&&S.res<=0.5)setChip(els.pmpChipB,els.pmpBText,'waiting for reservoir','standby');
+    else if(S.prep.stage==='chlorinate')setChip(els.pmpChipB,els.pmpBText,'TP'+t.id+' chlorinating ('+(0.5-t.phaseElapsed).toFixed(2)+' h left)','standby');
+    else if(S.prep.stage==='settle')setChip(els.pmpChipB,els.pmpBText,'TP'+t.id+' settling ('+(12-t.phaseElapsed).toFixed(1)+' h left)','standby');
+    else setChip(els.pmpChipB,els.pmpBText,'idle',null);
+  }else setChip(els.pmpChipB,els.pmpBText,'idle',null);
+  // Pump C
+  if(!playing){setChip(els.pmpChipC,els.pmpCText,'paused',null)}
+  else if(S.pumpC.active&&S.pumpC.source){let win=null;for(const w of WIN)if(_h>=w[0]&&_h<w[1]){win=w;break}
+    if(win)setChip(els.pmpChipC,els.pmpCText,'active · window ends in '+(win[1]-_h).toFixed(1)+' h','active');
+    else setChip(els.pmpChipC,els.pmpCText,'active','active');}
+  else if(S.pumpC.source){const n=nextWin(_h);setChip(els.pmpChipC,els.pmpCText,'standby · next window in '+(n-_h).toFixed(1)+' h','standby')}
+  else setChip(els.pmpChipC,els.pmpCText,'idle',null);
+  // Next event
+  const h=hod();
+  setCard(els.cardRes,els.resPhase,els.resDesc,els.resVol,phaseForRes(),descForRes(),S.res);
+  setCard(els.cardTp1,els.tp1Phase,els.tp1Desc,els.tp1Vol,tpStatus(S.tps[0]),descForTp(S.tps[0]),S.tps[0].vol);
+  setCard(els.cardTp2,els.tp2Phase,els.tp2Desc,els.tp2Vol,tpStatus(S.tps[1]),descForTp(S.tps[1]),S.tps[1].vol);
+  setCard(els.cardCp,els.cpPhase,els.cpDesc,els.cpVol,phaseForCp(),descForCp(),S.cul);
+  function setPump(el,stEl,active,label){el.classList.toggle('on',active);el.classList.toggle('off',!active);stEl.textContent=label}
+  const sFlow=getSeaFlow(),sCount=getSeaActiveCount();
+  setPump(els.pcA,els.pcAst,S.pumpA.active,S.pumpA.active?'Active · '+fmt(Math.round(sFlow))+' m³/h ('+sCount+'/'+seaPumpCount+')':(sCount?'Stopped':'All Off'));
+  setPump(els.pcB,els.pcBst,S.pumpB.active,S.pumpB.active?'Active · '+fmt(Math.round(getPumpBRate()))+' m³/h':'Stopped');
+  let pcLabel='Stopped';if(S.pumpC.active)pcLabel='Active · '+fmt(Math.round(getPumpCRate()))+' m³/h';else if(S.pumpC.source)pcLabel='Standby (Window)';
+  setPump(els.pcC,els.pcCst,S.pumpC.active,pcLabel);
+  let ws='Schedule: 06:00 - 10:00 AM · 14:00 - 18:00 PM · 20:00 - 23:00 PM';
+  if(S.pumpC.active){for(let i=0;i<WIN.length;i++){const w=WIN[i];if(h>=w[0]&&h<w[1]){const ampm=w[1]<=12?'AM':'PM';ws='In Window '+(i+1)+': '+String(w[0]).padStart(2,'0')+':00 - '+String(w[1]).padStart(2,'0')+':00 '+ampm;break}}}
+  els.winStatus.textContent=ws;
+  if(nowMarker)nowMarker.style.left=((h/24)*100)+'%';
+  // ==========================================================================
+  // SYSTEM HEALTH + FEED-DEMAND ANALYZER
+  // --------------------------------------------------------------------------
+  // Pipeline:  Sea ─Pump A→ Reservoir ─Pump B→ TPs ─Pump C→ CP
+  // Stage capacities (m³/day):
+  //     S = active pumps × rate × duty       (sea-intake side)
+  //     R = reservoir capacity               (must hold one TP fill)
+  //     T = avg(TP1, TP2)                    (TP cycle throughput)
+  //     D = feed × waterPerKg                (CP demand)
+  // The system is balanced when S ≥ T  AND  R ≥ max(TP1,TP2)  AND  T ≥ D.
+  // For each failing stage we list ONLY the knobs that move that stage, so
+  // a too-small-TP problem never gets a misleading "add more pumps" fix.
+  // ==========================================================================
+  if(els.healthBox){
+    // ---- Inputs (single source of truth) ----
+    const _seaCount=getSeaActiveCount();
+    const _seaInactive=seaPumpCount-_seaCount;
+    const _cpArea=parseNum(document.getElementById('cpArea').value)||119879;
+    const _feedPer2500=parseNum(els.feedPer2500.value)||235;
+    const _waterPerKg=parseNum(els.waterPerKg.value)||3;
+
+    // ---- Derived capacities ----
+    const _seaIntake=_seaCount*seaAvgRate*pumpAMaxHours;    // S (m³/day)
+    const _tpAvg=(TP1_CAP+TP2_CAP)/2;                       // T (m³/day)
+    const _tpMax=Math.max(TP1_CAP,TP2_CAP);                 // m³ largest TP
+    const _totalFeed=(_feedPer2500/2500)*_cpArea;           // kg/day
+    const _demand=_totalFeed*_waterPerKg;                   // D (m³/day)
+    const _achievable=_totalFeed>0?_tpAvg/_totalFeed:0;     // m³/kg achievable
+
+    // ---- Bottleneck flags ----
+    const _seaShort=_seaIntake<_tpAvg-0.5;
+    const _resShort=RES_CAP<_tpMax-0.5;
+    const _tpShort=_tpAvg<_demand-0.5;
+
+    // ---- Mirror calculator outputs to UI ----
+    // Truncate the achievable ratio with floor() so a value like 2.9950 reads
+    // as "2.99" (clearly below 3.00 standard), never rounded UP to look compliant.
+    if(els.feedTotal)els.feedTotal.textContent=fmt(Math.round(_totalFeed))+' kg/day';
+    if(els.waterRequired)els.waterRequired.textContent=fmt(Math.round(_demand))+' m³/day';
+    if(els.pumpDelivery)els.pumpDelivery.textContent=fmt(Math.round(_tpAvg))+' m³/day';
+    if(els.achievableRatio)els.achievableRatio.textContent=_totalFeed>0?((Math.floor(_achievable*100)/100).toFixed(2)+' m³/kg'):'—';
+
+    const _issues=[];
+
+    // ---- Operational notices/warnings ----
+    // Inactive pumps: 'notice' (purple) when supply is still adequate, otherwise the
+    // sea-bottleneck check below catches it as 'fail'. Zero rate is always 'warn'
+    // since the system cannot run at all in that state.
+    if(_seaInactive>0 && _seaIntake>=_tpAvg-0.5){
+      _issues.push({sev:'notice',msg:_seaInactive+' of '+seaPumpCount+' sea pumps inactive — supply still meets the TP cycle, but reactivating them restores full intake / headroom.'});
+    }
+    if(seaAvgRate<=0)_issues.push({sev:'warn',msg:'Sea pump average rate is 0 m³/h. Set a positive rate to bring water in.'});
+
+    // ---- Stage 1: SEA INTAKE bottleneck ----
+    // Two bullets per issue: one diagnosis, one consolidated fix line.
+    if(_seaShort){
+      const _gap=_tpAvg-_seaIntake;
+      _issues.push({sev:'fail',msg:'Sea supply — Pump A delivers '+fmt(Math.round(_seaIntake))+' m³/day but TP cycle needs '+fmt(Math.round(_tpAvg))+' m³/day (short '+fmt(Math.round(_gap))+'). Reservoir will run dry.'});
+      const _needN=(seaAvgRate>0&&pumpAMaxHours>0)?Math.ceil(_tpAvg/(seaAvgRate*pumpAMaxHours)):Infinity;
+      const _needRate=(_seaCount>0&&pumpAMaxHours>0)?(_tpAvg/(_seaCount*pumpAMaxHours)):Infinity;
+      const _needDuty=(_seaCount>0&&seaAvgRate>0)?(_tpAvg/(_seaCount*seaAvgRate)):Infinity;
+      const _opts=[];
+      if(isFinite(_needN)&&_needN<=SEA_PUMP_MAX)_opts.push('pumps ≥'+_needN);
+      if(isFinite(_needRate))_opts.push('rate ≥'+_needRate.toFixed(1)+' m³/h');
+      if(isFinite(_needDuty)&&_needDuty<=24)_opts.push('duty ≥'+(Math.ceil(_needDuty*10)/10).toFixed(1)+' h');
+      _opts.push('or shrink TPs ≤'+fmt(Math.round(_seaIntake))+' m³');
+      _issues.push({sev:'info',msg:'Fix any one — '+_opts.join(' · ')});
+    }
+
+    // ---- Stage 2: RESERVOIR bottleneck ----
+    if(_resShort){
+      _issues.push({sev:'fail',msg:'Reservoir — buffer '+fmt(Math.round(RES_CAP))+' m³ < largest TP '+fmt(Math.round(_tpMax))+' m³. Pump B will stall mid-fill.'});
+      _issues.push({sev:'info',msg:'Fix — enlarge reservoir area × height to ≥'+fmt(Math.round(_tpMax))+' m³'});
+    }
+
+    // ---- Stage 3: TP CONSTRUCTION bottleneck ----
+    // NOT a runtime crash — simulation keeps running, just never reaches 100%
+    // compliance. Classified as 'notice' (purple) per UX hierarchy.
+    if(_tpShort){
+      // Round UP — any sub-1% shortfall still shows as "1% short" so it stays
+      // consistent with the 2-decimal achievable display (2.99 ≠ 0% short).
+      const _shortPct=Math.max(1,Math.ceil(((_demand-_tpAvg)/_demand)*100));
+      const _achNow=_totalFeed>0?_tpAvg/_totalFeed:0;
+      // _achNow truncated DOWN to 2 decimals so 2.9950 reads as "2.99" (honest)
+      // rather than rounding up to "3.00" (which would falsely match the standard).
+      const _achStr=(Math.floor(_achNow*100)/100).toFixed(2);
+      _issues.push({sev:'notice',msg:'TP construction — TPs deliver '+fmt(Math.round(_tpAvg))+' m³/day but CP needs '+fmt(Math.round(_demand))+' m³/day ('+_shortPct+'% short, '+_achStr+' vs '+_waterPerKg+' m³/kg). Simulation runs, but standard not met.'});
+      const _opts=['enlarge TPs to '+fmt(Math.round(_demand))+' m³'];
+      if(_cpArea>0&&_waterPerKg>0){
+        const _maxFeed=(_tpAvg/_waterPerKg/_cpArea)*2500;
+        if(_maxFeed>0)_opts.push('feed ≤'+_maxFeed.toFixed(0)+' kg/2,500 m²');
+      }
+      if(_feedPer2500>0&&_waterPerKg>0){
+        const _maxCp=(_tpAvg/_waterPerKg)*2500/_feedPer2500;
+        if(_maxCp>0)_opts.push('CP area ≤'+fmt(Math.round(_maxCp))+' m²');
+      }
+      if(_totalFeed>0)_opts.push('lower standard to '+(Math.floor(_achNow*100)/100).toFixed(2)+' m³/kg');
+      _issues.push({sev:'info',msg:'Construction limit (pumps/duty/rate won\'t help) — '+_opts.join(' · ')});
+    }
+
+    // ---- TP imbalance (cycle asymmetry — non-fatal advisory) ----
+    if(_tpAvg>0&&Math.abs(TP1_CAP-TP2_CAP)>_tpAvg*0.1){
+      _issues.push({sev:'notice',msg:'TP1 ('+fmt(Math.round(TP1_CAP))+' m³) and TP2 ('+fmt(Math.round(TP2_CAP))+' m³) differ by more than 10% — match capacities for symmetric daily cycles.'});
+    }
+
+    // ---- Headroom advisories (non-fatal: stage is over-built >20%) ----
+    // Emitted whenever a stage has >20% surplus, regardless of whether other
+    // issues exist (so the user can see if part of the plant is oversized
+    // even while another part is the bottleneck).
+    if(_tpAvg>0&&_seaIntake>_tpAvg*1.2){
+      _issues.push({sev:'notice',msg:'Sea side headroom: '+Math.round((_seaIntake/_tpAvg-1)*100)+'% surplus over the TP cycle — sea-intake capacity could be reduced without affecting throughput.'});
+    }
+    if(_demand>0&&_tpAvg>_demand*1.2){
+      _issues.push({sev:'notice',msg:'TP side headroom: '+Math.round((_tpAvg/_demand-1)*100)+'% surplus over CP demand — TPs are oversized for the current feed plan.'});
+    }
+    // ---- Feed-capacity advisory: TP cycle > CP demand (any headroom) ----
+    // Tells the user how much they can raise the feed plan to fully use TP cycle
+    // capacity. The range spans from 0% headroom (max feed, no safety margin)
+    // to 10% headroom (10% safety buffer kept). Uses the user's current water-
+    // exchange standard so the math reflects whatever they have set.
+    if(_tpAvg>_demand+0.5&&_cpArea>0&&_waterPerKg>0){
+      const _feedMax0=(_tpAvg/_waterPerKg/_cpArea)*2500;        // 0% headroom (full util)
+      const _feedMax10=(_tpAvg/1.1/_waterPerKg/_cpArea)*2500;   // 10% headroom (safer)
+      const _inc0=_feedMax0-_feedPer2500;
+      const _inc10=_feedMax10-_feedPer2500;
+      if(_inc10>0.5){
+        _issues.push({sev:'notice',msg:'Feed plan headroom — at '+_waterPerKg+' m³/kg standard, TP cycle can support '+_feedMax10.toFixed(0)+'–'+_feedMax0.toFixed(0)+' kg / 2,500 m² / day (10% → 0% safety headroom). Currently '+_feedPer2500+' kg → increase by +'+_inc10.toFixed(0)+' to +'+_inc0.toFixed(0)+' kg / 2,500 m² / day to use it.'});
+      }
+    }
+    if(_demand>0&&_seaIntake>_demand*1.5&&!_seaShort&&!_tpShort){
+      _issues.push({sev:'notice',msg:'Whole sea-to-CP pipeline carries '+Math.round((_seaIntake/_demand-1)*100)+'% surplus over CP demand — significant over-capacity end to end.'});
+    }
+
+    // ---- "All stages aligned" success message (shown whenever no stage fails) ----
+    // Always emitted in the healthy branch so user sees the balance summary even
+    // when there are notices (purple) about pumps/headroom/imbalance.
+    if(!_seaShort && !_resShort && !_tpShort){
+      _issues.push({sev:'ok',msg:'Sea intake '+fmt(Math.round(_seaIntake))+' m³ ≥ TP cycle '+fmt(Math.round(_tpAvg))+' m³ ≥ CP demand '+fmt(Math.round(_demand))+' m³ — all stages aligned ✓'});
+    }
+
+    // ========================================================================
+    // STATE PRIORITY (strict — highest severity always wins the box color):
+    //   1. RED    (fail)   — runtime crash  OR  predicted RUNTIME crash
+    //                         (sea / reservoir bottleneck — reservoir will run dry)
+    //   2. AMBER  (warn)   — review needed, won't crash
+    //   3. PURPLE (notice) — non-fatal: system runs, but compliance not met or
+    //                         configuration suboptimal (TP construction, inactive
+    //                         pumps with adequate supply, headroom, imbalance, …)
+    //   4. GREEN  (ok)     — fully balanced
+    // RED is reserved ONLY for conditions where the simulation will actually
+    // halt mid-run. A TP that's too small for the feed plan keeps running
+    // forever — it just never hits 100% compliance — so it sits in PURPLE.
+    // ========================================================================
+    let _state='ok',_icon='✓',_text='System Configuration Sustainable';
+    if(systemFailed){
+      // Tier 1a — runtime crash already happened
+      _state='fail';_icon='✗';_text='System Failed · Simulation Halted';
+      _issues.length=0;
+      _issues.push({sev:'fail',msg:failureReason||'A simulation fault has occurred. Press Reset to clear.'});
+    } else if(_issues.some(function(x){return x.sev==='fail'})){
+      // Tier 1b — predicted RUNTIME crash (sea or reservoir bottleneck)
+      _state='fail';_icon='✗';
+      if(_seaShort) _text='Critical · Sea Supply Bottleneck — Reservoir Will Run Dry';
+      else if(_resShort) _text='Critical · Reservoir Bottleneck — Pump B Will Stall';
+      else _text='Critical · Configuration Will Crash';
+    } else if(_issues.some(function(x){return x.sev==='warn'})){
+      // Tier 2 — review needed but no crash predicted
+      _state='warn';_icon='!';_text='Warning · Review Configuration';
+    } else if(_issues.some(function(x){return x.sev==='notice'})){
+      // Tier 3 — purple. Specific headlines so user knows which advisory is
+      // most important. TP construction (compliance failure) outranks the
+      // softer advisories (over-built / imbalance / inactive pumps).
+      _state='notice';_icon='i';
+      if(_tpShort) _text='Notice · TP Construction Too Small — Feed vs Water-Exchange Standard Not Met';
+      else _text='Notice · System Healthy with Advisories';
+    } else {
+      // Tier 4 — fully balanced
+      _text=playing?'System Running Well':'Configuration OK — Press Play to Start';
+    }
+    els.healthBox.classList.remove('ok','warn','fail','notice');
+    els.healthBox.classList.add(_state);
+    els.healthIcon.textContent=_icon;
+    els.healthText.textContent=_text;
+    // Render bullets — 'info' severity becomes a visually-subordinate sub-bullet
+    // (indented, smaller text, dimmer color, ↳ marker) so fix-option lines read
+    // as supporting detail under their parent issue rather than as peers.
+    els.healthBullets.innerHTML='';
+    for(const _it of _issues){
+      const _li=document.createElement('li');
+      if(_it.sev==='info')_li.className='sub';
+      _li.textContent=_it.msg;
+      els.healthBullets.appendChild(_li);
+    }
+
+    // ---- Compliance speedometer ----
+    // 100% of the gauge = required water (feed × m³/kg from the input boxes).
+    // The gauge tracks LIVE daily-exchange progress while playing, so it "runs"
+    // as Pump C transfers water through the day. Resets to 0 when paused / reset.
+    const _arcLen=188.496; // π × 60
+    const _dailyEx=Math.max(0,S.dailyExchange||0);
+    let _actualCompl=0;
+    if(_demand>0) _actualCompl=Math.min(100,(_dailyEx/_demand)*100);
+    const _target = playing ? _actualCompl : 0;
+    const _filled = (_target/100)*_arcLen;
+    // Pick color CLASS (more reliable than attribute selector / inline style)
+    let _cls='compl-red';
+    if(_target>=100) _cls='compl-green';
+    else if(_target>=80) _cls='compl-lime';
+    else if(_target>=50) _cls='compl-amber';
+    if(els.complArc){
+      els.complArc.style.strokeDashoffset=(_arcLen-_filled).toFixed(2);
+      els.complArc.classList.remove('compl-red','compl-amber','compl-lime','compl-green');
+      els.complArc.classList.add(_cls);
+    }
+    if(els.complNeedle){
+      const _ang=-90+(_target/100)*180;
+      els.complNeedle.style.transform='rotate('+_ang.toFixed(2)+'deg)';
+    }
+    if(els.complValue){
+      els.complValue.textContent=_target.toFixed(1);
+      els.complValue.classList.remove('compl-red','compl-amber','compl-lime','compl-green');
+      els.complValue.classList.add(_cls);
+    }
+  }
+}
+
+// ============================================================================
+// PLAYBACK CONTROLS — Play / Pause / Reset / Speed
+// ============================================================================
+const btnPlay=document.getElementById('btnPlay');
+const btnReset=document.getElementById('btnReset');
+const btnApply=document.getElementById('btnApply');
+const slider=document.getElementById('speedSlider');
+const numInput=document.getElementById('speedInput');
+const speedDisp=document.getElementById('speedDisp');
+const presetBtns=document.querySelectorAll('.preset');
+const cfgStatus=document.getElementById('cfgStatus');
+
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function setSpeed(v,fromInput){
+  v=clamp(parseFloat(v)||1,0.1,200);HPS=v;
+  speedDisp.textContent=v.toFixed(v<10?2:1);
+  if(fromInput!=='slider')slider.value=Math.log10(v).toFixed(3);
+  if(fromInput!=='num')numInput.value=v.toFixed(2);
+  presetBtns.forEach(function(b){b.classList.toggle('active',Math.abs(parseFloat(b.dataset.speed)-v)<.001)});
+}
+slider.addEventListener('input',function(){const v=Math.pow(10,parseFloat(slider.value));setSpeed(v,'slider')});
+numInput.addEventListener('input',function(){setSpeed(numInput.value,'num')});
+numInput.addEventListener('change',function(){setSpeed(numInput.value,'num')});
+presetBtns.forEach(function(b){b.addEventListener('click',function(){setSpeed(parseFloat(b.dataset.speed))})});
+function refreshPlayBtn(){btnPlay.textContent=playing?'⏸ Pause':'▶ Play';btnPlay.classList.toggle('success',!playing&&!systemFailed);btnPlay.classList.toggle('primary',playing&&!systemFailed);btnPlay.disabled=!!systemFailed;if(systemFailed){btnPlay.textContent='⛔ System Failed';btnPlay.classList.remove('success','primary');btnPlay.classList.add('warn')}}
+btnPlay.addEventListener('click',function(){playing=!playing;refreshPlayBtn()});
+
+// Core simulation-state reset — clears running state but DOES NOT touch user inputs.
+// Each of the two reset buttons calls this AFTER restoring its own slice of defaults.
+function resetSimulation(){
+  S=initialState();
+  seedP(S.partsA,60);seedP(S.partsB,60);seedP(S.partsC,60);seedP(S.partsCex,40);
+  S.cpBubbles=[];S.sludge=[];
+  S.exchangedCycle=0;S.exchangeCycles=0;
+  S.pumpBSegments=[];S.pumpBDay=0;
+  S.chlorSegments=[];S.settleSegments=[];
+  S.eventCycle=0;S._lastPhase={};
+  pumpBForecastKey=null;
+  for(const k in daySnaps)delete daySnaps[k];
+  chlorForecastSegs=[];settleForecastSegs=[];
+  daySnaps[snapshotKey(0)]=takeSnapshot();
+  playing=false;
+  systemFailed=false;failureReason='';failTimer=0;
+  _stepAcc=0;
+  refreshPlayBtn();
+  buildPumpTimelines();
+}
+// Reset button (playback) — restores operational inputs: sea pumps, feed plan, Pump A duty, speed.
+// Leaves pond dimensions alone; for those use 'Set Default & Reset' in Pond Configuration.
+btnReset.addEventListener('click',function(){
+  // Pump A duty
+  pumpAMaxHours=20;
+  const _pAInp=document.getElementById('pumpAHours');
+  if(_pAInp)_pAInp.value='20';
+  // Restore default sea pump count (7), all ON, average rate 197.3
+  seaPumpCount=SEA_PUMP_DEFAULT;
+  seaActive.length=0;for(let i=0;i<seaPumpCount;i++)seaActive.push(true);
+  buildSeaPumpGrid();
+  seaAvgRate=197.3;
+  const _seaAvgInp=document.getElementById('seaAvg');
+  if(_seaAvgInp)_seaAvgInp.value=fmt(seaAvgRate,1);
+  // Feed plan + water-exchange standard
+  const _feedInp=document.getElementById('feedPer2500');
+  if(_feedInp)_feedInp.value='235';
+  const _wInp=document.getElementById('waterPerKg');
+  if(_wInp)_wInp.value='3';
+  updateSeaTotal();
+  applyCapacities();
+  setSpeed(1.0);
+  resetSimulation();
+});
+btnApply.addEventListener('click',function(){
+  applyCapacities();resetSimulation();buildPumpTimelines();
+  cfgStatus.textContent='✓ Applied (Reservoir '+fmt(Math.round(RES_CAP))+' / TP1 '+fmt(Math.round(TP1_CAP))+' / TP2 '+fmt(Math.round(TP2_CAP))+' / CP '+fmt(Math.round(CP_CAP))+' m³)';
+  setTimeout(function(){cfgStatus.textContent=''},3500);
+});
+
+// Set Default & Reset — restore factory defaults and restart
+const btnDefaults=document.getElementById('btnDefaults');
+// 'Set Default & Reset' (Pond Configuration) — restores POND DIMENSIONS ONLY.
+// Leaves sea pumps / feed / duty alone; for those use 'Reset' in the Playback section.
+btnDefaults.addEventListener('click',function(){
+  document.getElementById('resArea').value='30,149';
+  document.getElementById('resHeight').value='2.38';
+  document.getElementById('tp1Area').value='20,686';
+  document.getElementById('tp1Height').value='1.29';
+  document.getElementById('tp2Area').value='20,995';
+  document.getElementById('tp2Height').value='1.29';
+  document.getElementById('cpArea').value='119,879';
+  document.getElementById('cpHeight').value='1.3';
+  applyCapacities();
+  resetSimulation();
+  cfgStatus.textContent='✓ Pond dimensions restored to defaults';
+  setTimeout(function(){cfgStatus.textContent=''},3500);
+});
+
+const _heightIds=new Set(['resHeight','tp1Height','tp2Height','cpHeight']);
+function formatTankInput(el){
+  const v=parseNum(el.value);
+  if(_heightIds.has(el.id))el.value=fmt(v,v%1===0?0:2);
+  else el.value=fmt(Math.round(v));
+}
+['resArea','resHeight','tp1Area','tp1Height','tp2Area','tp2Height','cpArea','cpHeight'].forEach(function(id){
+  const el=document.getElementById(id);
+  el.addEventListener('input',applyCapacities);
+  el.addEventListener('blur',function(){formatTankInput(el);applyCapacities()});
+  formatTankInput(el);
+});
+applyCapacities();
+S.cul=CP_CAP;S.tps[0].vol=TP1_CAP;S.tps[0].cap=TP1_CAP;S.tps[1].vol=TP2_CAP;S.tps[1].cap=TP2_CAP;
+daySnaps[snapshotKey(0)]=takeSnapshot();
+
+window.addEventListener('keydown',function(e){
+  if(e.target.tagName==='INPUT')return;
+  if(e.key===' '){e.preventDefault();btnPlay.click()}
+  else if(e.key==='r'||e.key==='R'){btnReset.click()}
+  else if(e.key==='ArrowUp'){setSpeed(HPS*1.5)}
+  else if(e.key==='ArrowDown'){setSpeed(HPS/1.5)}
+});
+
+setSpeed(1.0);
+refreshPlayBtn();
+
+// === Pump Timeline rendering ===
+
+// ============================================================================
+// FORECAST — fast-forward state to project tomorrow's pump+event activity
+// ============================================================================
+// === Pump B forecast — predicts today's run windows by fast-forwarding a copy of state ===
+let pumpBForecastKey=null;
+let pumpBForecastSegs=[];
+let chlorForecastSegs=[];
+let settleForecastSegs=[];
+function forecastPumpBToday(){
+  if(typeof S==='undefined'||!S)return [];
+  const curCycle=Math.floor(S.simHours/24);
+  const key=curCycle+'|'+S.prep.stage+'|'+S.tps[0].phase+'|'+S.tps[1].phase+'|'+Math.round(S.res/100)+'|'+Math.round(S.tps[0].vol)+'|'+Math.round(S.tps[1].vol)+'|'+pumpAMaxHours+'|'+seaAvgRate+'|'+getSeaActiveCount()+'|'+seaPumpCount;
+  if(pumpBForecastKey===key)return pumpBForecastSegs;
+  // Save physics state with IDs for object refs (no JSON deep clone — small + cheap)
+  // CRITICAL: also save failure flags. advanceSubStep can set systemFailed=true
+  // when it projects a reservoir-dry condition — without snapshotting these,
+  // the failure leaks back into the real simulation after restore and produces
+  // ghost timeline segments / false fail states.
+  const sv={
+    simHours:S.simHours,res:S.res,cul:S.cul,
+    exchanged:S.exchanged,exchangedCycle:S.exchangedCycle,exchangeCycles:S.exchangeCycles,
+    dailyExchange:S.dailyExchange,dailyExchangeCycle:S._dailyExchangeCycle,liveLineTpId:S._liveLineTpId,liveLineValue:S._liveLineValue,
+    prepStage:S.prep.stage,prepTargetId:S.prep.target?S.prep.target.id:null,
+    pumpAActive:S.pumpA.active,pumpAAngle:S.pumpA.angle,
+    pumpBActive:S.pumpB.active,pumpBTargetId:S.pumpB.target?S.pumpB.target.id:null,pumpBAngle:S.pumpB.angle,
+    pumpCActive:S.pumpC.active,pumpCSourceId:S.pumpC.source?S.pumpC.source.id:null,pumpCAngle:S.pumpC.angle,
+    tps:S.tps.map(function(t){return {id:t.id,vol:t.vol,phase:t.phase,phaseElapsed:t.phaseElapsed}}),
+    systemFailed:systemFailed,failureReason:failureReason,failTimer:failTimer
+  };
+  // Run forecast — segment tracking and visual side-effects are guarded by _inForecast
+  S._inForecast=true;
+  const segs=[];
+  const chlorFc=[];const settleFc=[];
+  let segStart=S.pumpB.active?((S.simHours%24)+24)%24:null;
+  let lastActive=S.pumpB.active;
+  // Track currently-open chlor/settle segments per TP id
+  const _phaseAt={};
+  for(const _t of S.tps){_phaseAt[_t.id]=_t.phase}
+  const _initDh=((S.simHours%24)+24)%24;
+  for(const _t of S.tps){
+    if(_t.phase==='chlorinating')chlorFc.push({tp:_t.id,start:_initDh,end:null,fcst:true});
+    if(_t.phase==='settling')settleFc.push({tp:_t.id,start:_initDh,end:null,fcst:true});
+  }
+  let safety=2000;
+  while(Math.floor(S.simHours/24)===curCycle && safety-- >0){
+    advanceSubStep(0.1,0);
+    const dh=((S.simHours%24)+24)%24;
+    // Pump B
+    if(S.pumpB.active&&!lastActive){segStart=dh}
+    else if(!S.pumpB.active&&lastActive){if(segStart!=null)segs.push({start:segStart,end:dh,fcst:true});segStart=null}
+    lastActive=S.pumpB.active;
+    // TPs
+    for(const _t of S.tps){
+      const _pv=_phaseAt[_t.id], _cv=_t.phase;
+      if(_pv!==_cv){
+        if(_pv==='chlorinating'){for(let j=chlorFc.length-1;j>=0;j--){if(chlorFc[j].tp===_t.id&&chlorFc[j].end===null){chlorFc[j].end=dh;break}}}
+        else if(_pv==='settling'){for(let j=settleFc.length-1;j>=0;j--){if(settleFc[j].tp===_t.id&&settleFc[j].end===null){settleFc[j].end=dh;break}}}
+        if(_cv==='chlorinating')chlorFc.push({tp:_t.id,start:dh,end:null,fcst:true});
+        else if(_cv==='settling')settleFc.push({tp:_t.id,start:dh,end:null,fcst:true});
+        _phaseAt[_t.id]=_cv;
+      }
+    }
+  }
+  if(segStart!=null)segs.push({start:segStart,end:24,fcst:true});
+  for(const _s of chlorFc)if(_s.end===null)_s.end=24;
+  for(const _s of settleFc)if(_s.end===null)_s.end=24;
+  S._inForecast=false;
+  // Restore physics state
+  S.simHours=sv.simHours;S.res=sv.res;S.cul=sv.cul;
+  S.exchanged=sv.exchanged;S.exchangedCycle=sv.exchangedCycle;S.exchangeCycles=sv.exchangeCycles;
+  S.dailyExchange=sv.dailyExchange;S._dailyExchangeCycle=sv.dailyExchangeCycle;S._liveLineTpId=sv.liveLineTpId;S._liveLineValue=sv.liveLineValue;
+  S.prep.stage=sv.prepStage;
+  S.pumpA.active=sv.pumpAActive;S.pumpA.angle=sv.pumpAAngle;
+  S.pumpB.active=sv.pumpBActive;S.pumpB.angle=sv.pumpBAngle;
+  S.pumpC.active=sv.pumpCActive;S.pumpC.angle=sv.pumpCAngle;
+  for(let i=0;i<S.tps.length;i++){
+    const r=sv.tps[i],t=S.tps[i];
+    t.vol=r.vol;t.phase=r.phase;t.phaseElapsed=r.phaseElapsed;
+  }
+  function findById(id){for(const t of S.tps)if(t.id===id)return t;return null}
+  S.prep.target=sv.prepTargetId?findById(sv.prepTargetId):null;
+  S.pumpB.target=sv.pumpBTargetId?findById(sv.pumpBTargetId):null;
+  S.pumpC.source=sv.pumpCSourceId?findById(sv.pumpCSourceId):null;
+  // Restore failure flags so forecast-predicted failures don't bleed into reality.
+  systemFailed=sv.systemFailed;failureReason=sv.failureReason;failTimer=sv.failTimer;
+  pumpBForecastKey=key;pumpBForecastSegs=segs;chlorForecastSegs=chlorFc;settleForecastSegs=settleFc;
+  return segs;
+}
+
+// ============================================================================
+// EVENT TIMELINES — Pump A/B/C/Chlorination/Settling bars
+// ============================================================================
+function buildPumpTimelines(){
+  const aBar=document.getElementById('pt-a-bar');
+  if(!aBar)return;
+  aBar.innerHTML='';
+  const aSeg=document.createElement('div');aSeg.className='seg a';aSeg.id='pt-a-seg';
+  aSeg.style.left='0%';aSeg.style.width=((pumpAMaxHours/24)*100)+'%';
+  aBar.appendChild(aSeg);
+  const aNow=document.createElement('div');aNow.className='now';aNow.id='pt-a-now';aBar.appendChild(aNow);
+  // Pump C — 3 windows (positions are simHours-relative; 0 = 06:00)
+  const cBar=document.getElementById('pt-c-bar');cBar.innerHTML='';
+  for(const w of WIN){
+    const startPos=((w[0]-START_H+24)%24)/24;
+    const width=(w[1]-w[0])/24;
+    const seg=document.createElement('div');seg.className='seg c';
+    seg.style.left=(startPos*100)+'%';seg.style.width=(width*100)+'%';
+    cBar.appendChild(seg);
+  }
+  const cNow=document.createElement('div');cNow.className='now';cNow.id='pt-c-now';cBar.appendChild(cNow);
+  // Pump B / Chlorination / Settling — placeholders (segments rendered dynamically)
+  for(const id of ['pt-b-bar','pt-ch-bar','pt-st-bar']){
+    const bar=document.getElementById(id);if(!bar)continue;
+    bar.innerHTML='';
+    const nw=document.createElement('div');nw.className='now';nw.id=id.replace('-bar','-now');bar.appendChild(nw);
+  }
+}
+function renderBar(barId,segs,baseClass,dayHour){
+  const bar=document.getElementById(barId);if(!bar)return;
+  Array.from(bar.querySelectorAll('.seg')).forEach(function(el){el.remove()});
+  for(const seg of segs){
+    const endH=seg.end!=null?seg.end:dayHour;
+    if(endH>seg.start+0.001){
+      const el=document.createElement('div');
+      const tpClass=seg.tp?' tp'+seg.tp:'';
+      const fcClass=seg.fcst?' forecast':'';
+      el.className='seg '+baseClass+tpClass+fcClass;
+      el.style.left=((seg.start/24)*100)+'%';
+      el.style.width=(((endH-seg.start)/24)*100)+'%';
+      bar.insertBefore(el,bar.firstChild);
+    }
+  }
+}
+function updatePumpTimelines(){
+  const dayHour=((S.simHours%24)+24)%24;
+  const nowPct=(dayHour/24)*100;
+  for(const id of ['pt-a-now','pt-b-now','pt-c-now','pt-ch-now','pt-st-now']){
+    const el=document.getElementById(id);if(el)el.style.left=nowPct+'%';
+  }
+  // Refresh Pump A duty bar
+  const aSeg=document.getElementById('pt-a-seg');
+  if(aSeg)aSeg.style.width=((pumpAMaxHours/24)*100)+'%';
+  // Run forecast (also populates chlor/settle forecasts)
+  try{forecastPumpBToday()}catch(e){}
+  // Render Pump B + Chlor + Settle bars: real past + forecast future
+  const allB=(S.pumpBSegments||[]).concat(pumpBForecastSegs||[]);
+  const allCh=(S.chlorSegments||[]).concat(chlorForecastSegs||[]);
+  const allSt=(S.settleSegments||[]).concat(settleForecastSegs||[]);
+  renderBar('pt-b-bar',allB,'b',dayHour);
+  renderBar('pt-ch-bar',allCh,'chlor',dayHour);
+  renderBar('pt-st-bar',allSt,'settle',dayHour);
+}
+buildPumpTimelines();
+
+let last=performance.now();
+function loop(now){
+  try{
+    const dtReal=Math.min(.06,(now-last)/1000);
+    last=now;
+    if(playing)step(dtReal);
+    draw();updateDOM();
+  }catch(err){console.error('Loop error:',err)}
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(function(t){last=t;loop(t)});
+})();
+</script>
+<!-- PWA · service worker registration. Runs after the main script so it
+     can't block the simulation. Only registers when served over http(s)
+     or localhost (browsers refuse SW from file://). -->
+<script>
+(function(){
+  if(!('serviceWorker' in navigator)) return;
+  var proto = location.protocol;
+  if(proto !== 'https:' && proto !== 'http:') return;
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').catch(function(err){
+      console.warn('[DELOS Sim] Service worker registration failed:', err);
+    });
+  });
+})();
+</script>
+</body>
+</html>

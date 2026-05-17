@@ -1,6 +1,6 @@
 {
-  "name": "DELOS · Pump Performance Simulation",
-  "short_name": "DELOS Sim",
+  "name": "DELOS Pump Simulator",
+  "short_name": "DELOS Pump Sim",
   "description": "Aquaculture water treatment and pump performance simulation",
   "start_url": "./aqua_treatment_simulation_stage2.html",
   "scope": "./",
