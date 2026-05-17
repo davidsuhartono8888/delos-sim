@@ -1,0 +1,21 @@
+{
+  "name": "DELOS Pump Simulator",
+  "short_name": "DELOS Pump Sim",
+  "description": "Aquaculture water treatment and pump performance simulation",
+  "start_url": "./aqua_treatment_simulation_stage2.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "natural",
+  "background_color": "#07101f",
+  "theme_color": "#0a1428",
+  "lang": "en",
+  "categories": ["productivity", "utilities", "education"],
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
