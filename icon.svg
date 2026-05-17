@@ -1,0 +1,26 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="DELOS Sim icon">
+  <!-- Background — matches the simulation's dark theme so home-screen icon looks native -->
+  <rect width="512" height="512" rx="96" fill="#07101f"/>
+  <!-- Subtle radial glow behind the waves -->
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="60%">
+      <stop offset="0%" stop-color="#1a2746" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#07101f" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="waveTop" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4ec5ee"/>
+      <stop offset="100%" stop-color="#1d92cf"/>
+    </linearGradient>
+    <linearGradient id="waveMid" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3d72b9"/>
+      <stop offset="100%" stop-color="#264f99"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <!-- Three stacked wave ribbons — same shape language as the header logo -->
+  <g transform="translate(64 80) scale(2.71)">
+    <path d="M 12,12 C 32,2 52,2 70,12 C 88,22 108,22 128,12 L 128,28 C 108,38 88,38 70,28 C 52,18 32,18 12,28 Z" fill="url(#waveTop)"/>
+    <path d="M 12,42 C 32,32 52,32 70,42 C 88,52 108,52 128,42 L 128,58 C 108,68 88,68 70,58 C 52,48 32,48 12,58 Z" fill="url(#waveMid)"/>
+    <path d="M 12,72 C 32,62 52,62 70,72 C 88,82 108,82 128,72 L 128,88 C 108,98 88,98 70,88 C 52,78 32,78 12,88 Z" fill="#152d4a"/>
+  </g>
+</svg>
