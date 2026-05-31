@@ -1,0 +1,298 @@
+================================================================================
+  PT. BAS — Configurable Pump Performance Simulation
+  Release Notes (Stage 1 → Stage 4)
+
+  Created by David Suhartono
+  PT. Delos Teknologi Maritim Jaya, 2026
+================================================================================
+
+ABOUT THIS DOCUMENT
+-------------------
+This file summarizes everything that has been built into the simulator from
+the first prototype through the current Stage 4 release. Each stage builds
+on the previous one — no features were removed.
+
+The simulator runs entirely in the browser. No backend, no database, no
+network calls during operation. Scenarios are saved to localStorage on the
+operator's own device.
+
+
+
+================================================================================
+STAGE 1 — INITIAL PROTOTYPE
+================================================================================
+
+The foundation: a single-page browser simulator that models a full
+aquaculture water-treatment cycle for PT. BAS.
+
+CORE FEATURES
+- Real-time scene canvas: Sea, Reservoir, Treatment Pond 1 & 2, Cultivation
+  Pond, and the 3 pumps (A: sea-to-reservoir, B: reservoir-to-TP, C:
+  TP-to-cultivation) with animated water levels, pipes, sludge, and bubbles.
+
+- Aggregate-mode pond configuration: operator types total area and water
+  height for each of the 4 pond categories. Volume = area × height.
+
+- Sea pump configuration: pump count (5–10), average flow per pump, and
+  Pump A daily duty hours.
+
+- Feed & water-demand calculator: feed kg per 2,500 m² + water exchange
+  standard m³/kg → Total feed, Required water, Pump cycle delivery,
+  Achievable m³/kg.
+
+- Health box system recommendation: 4 states (OK / Notice / Warning /
+  Critical) with live diagnostic messages and bullet-point causes.
+
+- Pump activity timeline: 24-hour strip showing when each pump runs.
+
+- Fixed-timestep deterministic simulation: speed slider (0.5×–10×) and
+  preset speeds (1×, 2×, 5×, 10×) for fast iteration.
+
+
+
+================================================================================
+STAGE 2 — MOBILE, PWA, GITHUB PAGES DEPLOYMENT
+================================================================================
+
+Turned the prototype into a real installable app on Android and a published
+URL for operators in the field.
+
+WHAT WAS ADDED
+- Progressive Web App support: installable on Android home screen as
+  "DELOS Pump Simulator" via Add to Home Screen. Works fully offline once
+  installed.
+
+- Service worker (sw.js): pre-caches HTML, manifest, icon, and farm map on
+  install. Cache version bumps purge old assets automatically.
+
+- App manifest (manifest.json): icon, theme colors, standalone display
+  mode, start URL.
+
+- Desktop-site viewport pinned to 1240px: simulator always renders with
+  the desktop layout regardless of phone size — operators get the full
+  feature set, never a stripped mobile version.
+
+- Orientation guard: portrait, landscape-left, and landscape-right all
+  supported. Upside-down portrait (180°) snaps back to the last landscape
+  used so the screen never reads inverted.
+
+- "How to use this simulator" quick-start guide: collapsible expandable
+  section at the top with step-by-step walkthrough.
+
+- GitHub Pages deployment: deployed at davesuhartono.github.io/[repo] for
+  zero-install browser access.
+
+- Mobile-friendly touch targets: pumps, buttons, and inputs sized for
+  finger taps.
+
+
+
+================================================================================
+STAGE 3 — CUSTOMIZE MODE & FARM MAP
+================================================================================
+
+Replaced the abstract "aggregate area" inputs with a real farm map where
+operators paint individual ponds into their roles.
+
+AGGREGATE vs CUSTOMIZE TOGGLE
+- Aggregate mode (default): same as Stage 1 — type one area + height per
+  category.
+
+- Customize mode: pick a brush, then tap individual ponds on the farm
+  aerial photo. Volumes are computed from real per-pond measurements.
+
+FARM MAP PICKER
+- Real PT. BAS aerial photo embedded as the base layer.
+
+- 89 pond markers from PT. BAS Excel data — each with accurate x/y
+  coordinates, average area (m²), and water-level height (m).
+
+- 5 brushes:
+   * Reservoir (RES, blue)
+   * Treatment Pond 1 (TP1, orange)
+   * Treatment Pond 2 (TP2, green)
+   * Cultivation Pond (CP, purple)
+   * Unassign (gray)
+
+- Tap a pond with the active brush to assign it. Tap again with the same
+  brush to unassign.
+
+- Inspector mode: tap a pond without an active brush to see "R00 ·
+  currently Reservoir · 609 m² × 2.5 m".
+
+- Floating compass at top-left of the map (does not zoom or pan with
+  the picture).
+
+POND-LEVEL ACCURACY
+- Each pond's real water-level height is used: volume = Σ(area × height)
+  per pond in the category.
+
+- Customize totals are normalized to aggregate-style math (rounded area ×
+  2-decimal effective height) so the values displayed in both modes match
+  exactly at default settings.
+
+- R7A excluded by default: it is not in active use at the farm. Operator
+  can manually paint it if needed; reset restores it to Unassigned.
+
+ZOOM & SCROLL
+- Zoom in/out from 100% to 300% in 25% steps + Fit-width reset.
+
+- Pond markers scale up with zoom so they stay tappable.
+
+- Picture stays inside the box at every zoom level (absolute-positioned
+  scroller, vertical + horizontal scrollbars appear automatically).
+
+ALWAYS-2-DECIMAL HEIGHTS
+- Water heights always display with 2 decimals (e.g. "1.30" not "1.3") in
+  every state — initial load, edits, reset, even after typing "2".
+
+OTHER POLISH
+- Page heading renamed to "PT. BAS — Configurable Pump Performance
+  Simulation".
+
+- Byline updated to "Created by David Suhartono, PT. Delos Teknologi
+  Maritim Jaya, 2026".
+
+- Initial-load spotlight effect: dims the whole page on first open,
+  highlighting the How-to box so new operators read the guide first. Any
+  click dismisses the dim and the page returns to normal.
+
+- Auto-scroll to top on every browser refresh — the spotlight always
+  finds the How-to section ready to read.
+
+
+
+================================================================================
+STAGE 4 — SCENARIOS, COMPARE, PRINT
+================================================================================
+
+Made the simulator a real planning tool: operators save named configurations,
+compare them side-by-side, and print formal reports.
+
+SCENARIOS MENU (☰ button, top-right)
+- Save the current full configuration (pond + pump + feed + playback
+  speed + active health snapshot) under a name.
+
+- Duplicate names are blocked case-insensitively — operators can't
+  accidentally overwrite a saved scenario.
+
+- List of saved scenarios, sorted newest-first.
+
+- Per-row actions:
+   * Load — apply a saved scenario to the live simulator.
+   * Update — overwrite a saved scenario with the current live state.
+
+- Click on a scenario name to rename inline. Click outside or press Enter
+  to save. Press Escape to cancel. Duplicates are rejected.
+
+- Select-all tri-state checkbox + live counter ("5 saved · 2 selected").
+
+- Bulk actions (footer): Delete, Compare, Print — all operate on the
+  checkboxed scenarios.
+
+COMPARE MODAL (side-by-side metrics)
+- Tick 1 scenario → compare with the current live state.
+- Tick 2–4 scenarios → compare them with each other.
+
+- Table layout fixed: every scenario column is exactly the same width
+  regardless of name length.
+
+- Banded columns + row hover highlight for easy left-to-right scanning.
+
+- Title-cased parameter labels.
+
+- Sections included:
+   * Pond Configuration — mode + area/height/volume per category.
+   * Sea Pumps — count, active, average flow, Pump A duty, total flow,
+     pump per cycle delivery.
+   * Feed & Water Demand — feed plan, water exchange standard, total
+     feed plan, required water, achievable feed, water exchange
+     feed-based compliance (%), potential water exchange volume-based (%).
+   * System Recommendation — colored status badge (✓ OK / ℹ Notice /
+     ⚠ Warn / ✕ Critical) + recommendation text per scenario.
+
+- Difference highlighting: cells whose values differ across columns are
+  highlighted yellow for instant spotting.
+
+PRINT REPORT (PDF via browser print dialog)
+- One-click "🖨 Print" sends checked scenarios to the browser's print
+  view. From there, "Save as PDF" produces the formal report.
+
+- Each scenario fits exactly on one A4 page (even in Customize mode with
+  55 cultivation ponds listed individually).
+
+- Multi-page output: 3 scenarios ticked → 3-page PDF, 4 ticked → 4-page,
+  etc. No blank pages.
+
+- Page structure per scenario:
+   * Header: DELOS logo + "PT. BAS — Pump Performance Simulation Report"
+     + "PT. Delos Teknologi Maritim Jaya".
+   * Pond Configuration table (mode badge + 4-row area/height/volume).
+   * In Customize mode: Pond Assignments sub-section (3-column table —
+     Pond Category / Pond Count / Pond Names — listing every pond ID).
+   * Sea Pumps and Feed & Water Demand sections.
+   * System Recommendation per-scenario snapshot.
+   * Footer: timestamp + playback speed.
+
+POLISHED MODAL UI
+- Layered backdrop (radial gradient + 6px blur).
+- 2-layer card shadow + accent gradient surface.
+- Header with icon tile + title + subtitle.
+- Save area highlighted as the primary action panel.
+- Inline pencil affordance (✎) on row hover hints click-to-rename.
+- Row hover: lift + soft shadow + accent border.
+- Checked row: accent tint + left inset accent bar.
+- Toast notifications slide in with ✓ / ⚠ semantic icons.
+- Custom-tinted scrollbar.
+- Smooth cubic-bezier modal entrance animation.
+
+BEHAVIOR FIXES
+- Background page no longer scrolls when the modal is open (position:fixed
+  trick — works on iOS Safari + Android WebView).
+- Print dialog produces correct multi-page output (was clipping to 1 page
+  in earlier builds).
+- "Press Play to Start" suffix removed from live health text and
+  retroactively cleaned from older saved scenarios on read.
+
+
+
+================================================================================
+DEPLOYMENT
+================================================================================
+
+CURRENT VERSION
+- Stage 4 reset point: aqua_treatment_simulation_stage4.html
+- Service worker cache: delos-sim-v40
+- PWA start URL: ./aqua_treatment_simulation_stage4.html
+
+FILES TO UPLOAD TO GITHUB PAGES REPO
+- aqua_treatment_simulation_stage4.html  (the simulator)
+- manifest.json                          (PWA config)
+- sw.js                                  (service worker)
+- icon.svg                               (app icon)
+- farm_map.jpg                           (PT. BAS aerial)
+
+UPDATING FROM AN OLDER STAGE
+- Operators on stage 3: open the new URL (.../stage4.html). The service
+  worker will purge the old cache automatically.
+- PWA installs from stage 3: uninstall the old app from the home screen,
+  reinstall from the new stage 4 URL.
+
+RESET POINTS
+Each stage's source is preserved as an immutable snapshot:
+- aqua_treatment_simulation_stage1.html  (Stage 1 — prototype)
+- aqua_treatment_simulation_stage2.html  (Stage 2 — PWA + GitHub Pages)
+- aqua_treatment_simulation_stage3.html  (Stage 3 — Customize + Farm Map)
+- aqua_treatment_simulation_stage4.html  (Stage 4 — Scenarios + Print)
+
+
+
+================================================================================
+THANK YOU
+================================================================================
+
+For questions, suggestions, or bug reports:
+  david.suhartono@delosaqua.com
+  PT. Delos Teknologi Maritim Jaya
+
+================================================================================
